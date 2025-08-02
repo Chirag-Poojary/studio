@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Camera, CheckCircle, Loader2, RefreshCw, UserCheck } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { enrollFace } from '@/ai/flows/enroll-face';
-import { Alert, AlertDescription, AlertTitle } from '../ui/alert';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 type EnrollmentStatus = 'idle' | 'camera_on' | 'picture_taken' | 'enrolling' | 'enrolled';
 
@@ -155,7 +155,7 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
                     <AlertTitle className="text-green-800">You're all set!</AlertTitle>
                     <AlertDescription className="text-green-700">
                         You can now use face verification to mark your attendance during live lecture sessions.
-                    </Description>
+                    </AlertDescription>
                 </Alert>
                 {imageSrc && (
                     <div className="mt-4 text-center">
