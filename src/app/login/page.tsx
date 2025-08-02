@@ -2,7 +2,13 @@
 'use client';
 
 import { Suspense } from 'react';
-import { AuthForm } from '@/components/auth-form';
+import dynamic from 'next/dynamic';
+import { Loader2 } from 'lucide-react';
+
+const AuthForm = dynamic(() => import('@/components/auth-form').then(mod => mod.AuthForm), {
+  ssr: false,
+  loading: () => <div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin" /></div>
+});
 
 function LoginPageContent() {
   return (
@@ -14,7 +20,7 @@ function LoginPageContent() {
 
 export default function LoginPage() {
     return (
-        <Suspense fallback={<div className="flex min-h-screen items-center justify-center">Loading...</div>}>
+        <Suspense fallback={<div className="flex min-h-screen items-center justify-center"><Loader2 className="h-12 w-12 animate-spin" /></div>}>
             <LoginPageContent />
         </Suspense>
     )
