@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -18,12 +19,15 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { Mail, Lock } from 'lucide-react';
+import { Mail, Lock, Loader2 } from 'lucide-react';
+import { auth, db } from '@/lib/firebase';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
+import { doc, setDoc } from 'firebase/firestore';
 
 const formSchema = z.object({
   email: z.string().email({ message: 'Please enter a valid Outlook email address.' }).refine(
-    (email) => email.endsWith('.edu'),
-    { message: 'Please use your college-provided Outlook ID (e.g., name@college.edu).' }
+    (email) => email.endsWith('@vit.edu.in'),
+    { message: 'Please use your college-provided Outlook ID (e.g., name@vit.edu.in).' }
   ),
   password: z.string().min(8, { message: 'Password must be at least 8 characters long.' }),
 });
@@ -36,6 +40,7 @@ export function AuthForm() {
   const { toast } = useToast();
   const role = searchParams.get('role') || 'student';
   const [activeTab, setActiveTab] = useState('login');
+  const [isLoading, setIsLoading] = useState(false);
   
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -45,30 +50,56 @@ export function AuthForm() {
     },
   });
 
-  const onSubmit = (data: FormValues) => {
-    // Mocking auth logic
-    console.log({ action: activeTab, role, data });
+  const onSubmit = async (data: FormValues) => {
+    setIsLoading(true);
+    const { email, password } = data;
 
     if (activeTab === 'register') {
-      toast({
-        title: 'Registration Successful!',
-        description: 'You can now log in with your new credentials.',
-      });
-      // In a real app, you would handle user creation here.
-      // For this demo, we'll just switch to the login tab.
-      setActiveTab('login'); 
-      form.reset();
-    } else {
-      toast({
-        title: 'Login Successful!',
-        description: 'Redirecting to your dashboard...',
-      });
-       // In a real app, you would handle login and session management here.
-      setTimeout(() => {
-        const dashboardUrl = role === 'professor' ? '/professor-dashboard' : '/student-dashboard';
-        router.push(dashboardUrl);
-      }, 1000);
+      try {
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        const user = userCredential.user;
+
+        // Store user role in Firestore
+        await setDoc(doc(db, 'users', user.uid), {
+          email: user.email,
+          role: role,
+        });
+
+        toast({
+          title: 'Registration Successful!',
+          description: 'You can now log in with your new credentials.',
+        });
+        setActiveTab('login');
+        form.reset();
+      } catch (error: any) {
+        console.error("Registration error:", error);
+        toast({
+          variant: 'destructive',
+          title: 'Registration Failed',
+          description: error.message || 'An unknown error occurred.',
+        });
+      }
+    } else { // Login
+      try {
+        await signInWithEmailAndPassword(auth, email, password);
+        toast({
+          title: 'Login Successful!',
+          description: 'Redirecting to your dashboard...',
+        });
+        setTimeout(() => {
+          const dashboardUrl = role === 'professor' ? '/professor-dashboard' : '/student-dashboard';
+          router.push(dashboardUrl);
+        }, 1000);
+      } catch (error: any) {
+        console.error("Login error:", error);
+        toast({
+          variant: 'destructive',
+          title: 'Login Failed',
+          description: error.message || 'Invalid credentials or user not found.',
+        });
+      }
     }
+    setIsLoading(false);
   };
 
   const roleTitle = role.charAt(0).toUpperCase() + role.slice(1);
@@ -84,8 +115,8 @@ export function AuthForm() {
       <CardContent>
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="login">Login</TabsTrigger>
-            <TabsTrigger value="register">Register</TabsTrigger>
+            <TabsTrigger value="login" disabled={isLoading}>Login</TabsTrigger>
+            <TabsTrigger value="register" disabled={isLoading}>Register</TabsTrigger>
           </TabsList>
           <TabsContent value="login">
              <Form {...form}>
@@ -99,7 +130,7 @@ export function AuthForm() {
                       <FormControl>
                         <div className="relative">
                            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                           <Input placeholder="your.name@college.edu" {...field} className="pl-10" />
+                           <Input placeholder="your.name@vit.edu.in" {...field} className="pl-10" />
                         </div>
                       </FormControl>
                       <FormMessage />
@@ -122,7 +153,9 @@ export function AuthForm() {
                     </FormItem>
                   )}
                 />
-                <Button type="submit" className="w-full">Login</Button>
+                <Button type="submit" className="w-full" disabled={isLoading}>
+                  {isLoading ? <Loader2 className="animate-spin" /> : 'Login'}
+                </Button>
               </form>
              </Form>
           </TabsContent>
@@ -138,7 +171,7 @@ export function AuthForm() {
                       <FormControl>
                         <div className="relative">
                            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                           <Input placeholder="your.name@college.edu" {...field} className="pl-10" />
+                           <Input placeholder="your.name@vit.edu.in" {...field} className="pl-10" />
                         </div>
                       </FormControl>
                       <FormMessage />
@@ -161,7 +194,9 @@ export function AuthForm() {
                     </FormItem>
                   )}
                 />
-                <Button type="submit" className="w-full">Register</Button>
+                <Button type="submit" className="w-full" disabled={isLoading}>
+                  {isLoading ? <Loader2 className="animate-spin" /> : 'Register'}
+                </Button>
               </form>
              </Form>
           </TabsContent>

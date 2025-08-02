@@ -1,5 +1,8 @@
 import { initializeApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
+import { getAuth } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
+
 const firebaseConfig = {
   apiKey: "AIzaSyCXjqSbfgilMF9LqvFdhLw7te_j7dhMktY",
   authDomain: "v-attendance-fcc06.firebaseapp.com",
@@ -11,4 +14,6 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
+// const analytics = getAnalytics(app); // Analytics is not used in this app
+export const auth = getAuth(app);
+export const db = getFirestore(app);
