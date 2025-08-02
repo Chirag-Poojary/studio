@@ -104,9 +104,15 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
       });
 
       if (result.success) {
+        // If part of registration, pass data URI to parent.
         if (isPartOfRegistration && onEnrollmentComplete) {
             onEnrollmentComplete(imageSrc);
-        } else {
+             toast({
+                title: "Enrollment Successful!",
+                description: "Completing your registration...",
+            });
+        // If on dashboard, update the user doc directly.
+        } else if (!isPartOfRegistration) {
             await updateDoc(doc(db, 'users', currentUser.uid), {
               faceDataUri: imageSrc
             });
@@ -133,11 +139,13 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
   const reset = () => {
     setImageSrc(null);
     setStatus('idle');
-    startCamera();
+    if (!videoRef.current?.srcObject) {
+       startCamera();
+    }
   };
 
   useEffect(() => {
-    if (status === 'idle' && isClient) {
+    if (status === 'idle' && isClient && !videoRef.current?.srcObject) {
       startCamera();
     }
     return () => stopCamera();
@@ -226,7 +234,7 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
           </Button>
         )}
         {status === 'enrolled' && isPartOfRegistration && (
-            <p className="text-green-600 font-semibold text-center">Enrollment successful! Processing...</p>
+            <p className="text-green-600 font-semibold text-center">Enrollment successful! Completing registration...</p>
         )}
       </CardFooter>
     </Wrapper>
