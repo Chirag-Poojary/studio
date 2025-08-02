@@ -8,7 +8,7 @@ export default function Home() {
     <main className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-background to-blue-50/50 p-4">
       <div className="text-center mb-12">
         <h1 className="text-5xl md:text-6xl font-bold text-primary tracking-tight">
-          CampusConnect Attendance
+          V-Attendance
         </h1>
         <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
           A seamless, secure, and smart solution for managing college attendance.
@@ -32,9 +32,9 @@ export default function Home() {
             <p className="mb-4 text-sm text-muted-foreground">
               Create lecture sessions, generate QR codes, and monitor student check-ins instantly. Includes offline support for manual attendance.
             </p>
-            <Button asChild className="w-full" variant="outline">
-              <Link href="/professor-dashboard">
-                Access Professor Dashboard
+            <Button asChild className="w-full">
+              <Link href="/login?role=professor">
+                Login as Professor
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
             </Button>
@@ -57,9 +57,9 @@ export default function Home() {
             <p className="mb-4 text-sm text-muted-foreground">
               Scan a QR code, verify your identity with face recognition, and get your attendance marked within seconds.
             </p>
-            <Button asChild className="w-full" variant="outline">
-              <Link href="/student-dashboard">
-                Access Student Dashboard
+            <Button asChild className="w-full">
+              <Link href="/login?role=student">
+                Login as Student
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
             </Button>
@@ -67,7 +67,7 @@ export default function Home() {
         </Card>
       </div>
       <footer className="mt-16 text-center text-muted-foreground text-sm">
-        <p>&copy; {new Date().getFullYear()} CampusConnect. All rights reserved.</p>
+        <p>&copy; {new Date().getFullYear()} VAttendance. All rights reserved.</p>
       </footer>
     </main>
   );
