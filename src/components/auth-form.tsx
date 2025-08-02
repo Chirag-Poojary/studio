@@ -19,10 +19,11 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { Mail, Lock, Loader2 } from 'lucide-react';
+import { Mail, Lock, Loader2, ArrowLeft } from 'lucide-react';
 import { auth, db } from '@/lib/firebase';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
+import { FaceEnrollment } from '@/components/student/face-enrollment';
 
 const formSchema = z.object({
   email: z.string().email({ message: 'Please enter a valid Outlook email address.' }).refine(
@@ -33,6 +34,7 @@ const formSchema = z.object({
 });
 
 type FormValues = z.infer<typeof formSchema>;
+type RegistrationStep = 'details' | 'face-enrollment';
 
 export function AuthForm() {
   const searchParams = useSearchParams();
@@ -41,7 +43,9 @@ export function AuthForm() {
   const role = searchParams.get('role') || 'student';
   const [activeTab, setActiveTab] = useState('login');
   const [isLoading, setIsLoading] = useState(false);
-  
+  const [registrationStep, setRegistrationStep] = useState<RegistrationStep>('details');
+  const [registrationData, setRegistrationData] = useState<FormValues | null>(null);
+
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -50,77 +54,157 @@ export function AuthForm() {
     },
   });
 
-  const onSubmit = async (data: FormValues) => {
+  const handleRegistrationSubmit = async (data: FormValues) => {
+    if (role === 'student') {
+      setRegistrationData(data);
+      setRegistrationStep('face-enrollment');
+    } else {
+      await completeRegistration(data);
+    }
+  };
+  
+  const completeRegistration = async (data: FormValues, faceDataUri?: string) => {
     setIsLoading(true);
     const { email, password } = data;
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
 
-    if (activeTab === 'register') {
-      try {
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        const user = userCredential.user;
+      const userData: { email: string | null; role: string; faceDataUri?: string } = {
+        email: user.email,
+        role: role,
+      };
 
-        // Store user role in Firestore
-        await setDoc(doc(db, 'users', user.uid), {
-          email: user.email,
-          role: role,
-        });
-
-        toast({
-          title: 'Registration Successful!',
-          description: 'You can now log in with your new credentials.',
-        });
-        setActiveTab('login');
-        form.reset();
-      } catch (error: any) {
-        console.error("Registration error:", error);
-        toast({
-          variant: 'destructive',
-          title: 'Registration Failed',
-          description: error.message || 'An unknown error occurred.',
-        });
+      if (role === 'student' && faceDataUri) {
+        userData.faceDataUri = faceDataUri;
       }
-    } else { // Login
-      try {
-        await signInWithEmailAndPassword(auth, email, password);
-        toast({
-          title: 'Login Successful!',
-          description: 'Redirecting to your dashboard...',
-        });
-        setTimeout(() => {
-          const dashboardUrl = role === 'professor' ? '/professor-dashboard' : '/student-dashboard';
-          router.push(dashboardUrl);
-        }, 1000);
-      } catch (error: any) {
-        console.error("Login error:", error);
-        toast({
-          variant: 'destructive',
-          title: 'Login Failed',
-          description: error.message || 'Invalid credentials or user not found.',
-        });
-      }
+
+      await setDoc(doc(db, 'users', user.uid), userData);
+
+      toast({
+        title: 'Registration Successful!',
+        description: 'You can now log in with your new credentials.',
+      });
+      setActiveTab('login');
+      setRegistrationStep('details');
+      form.reset();
+    } catch (error: any) {
+      console.error("Registration error:", error);
+      toast({
+        variant: 'destructive',
+        title: 'Registration Failed',
+        description: error.message || 'An unknown error occurred.',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleFaceEnrolled = (faceDataUri: string) => {
+    if (registrationData) {
+      completeRegistration(registrationData, faceDataUri);
+    }
+  };
+
+  const handleLoginSubmit = async (data: FormValues) => {
+    setIsLoading(true);
+    const { email, password } = data;
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+      toast({
+        title: 'Login Successful!',
+        description: 'Redirecting to your dashboard...',
+      });
+      setTimeout(() => {
+        const dashboardUrl = role === 'professor' ? '/professor-dashboard' : '/student-dashboard';
+        router.push(dashboardUrl);
+      }, 1000);
+    } catch (error: any) {
+      console.error("Login error:", error);
+      toast({
+        variant: 'destructive',
+        title: 'Login Failed',
+        description: error.message || 'Invalid credentials or user not found.',
+      });
     }
     setIsLoading(false);
   };
 
   const roleTitle = role.charAt(0).toUpperCase() + role.slice(1);
+  
+  const renderRegisterForm = () => {
+    if (role === 'student' && registrationStep === 'face-enrollment') {
+      return (
+        <div>
+           <Button variant="ghost" size="sm" onClick={() => setRegistrationStep('details')} className="mb-4">
+            <ArrowLeft className="mr-2" /> Back to Details
+          </Button>
+          <FaceEnrollment onEnrollmentComplete={handleFaceEnrolled} isPartOfRegistration={true} />
+        </div>
+      );
+    }
+    return (
+       <Form {...form}>
+        <form onSubmit={form.handleSubmit(handleRegistrationSubmit)} className="space-y-6 pt-4">
+           <FormField
+            control={form.control}
+            name="email"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>College Email</FormLabel>
+                <FormControl>
+                  <div className="relative">
+                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                     <Input placeholder="your.name@vit.edu.in" {...field} className="pl-10" />
+                  </div>
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+           <FormField
+            control={form.control}
+            name="password"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Create Password</FormLabel>
+                 <FormControl>
+                   <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input type="password" placeholder="Choose a strong password" {...field} className="pl-10" />
+                   </div>
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <Button type="submit" className="w-full" disabled={isLoading}>
+            {isLoading ? <Loader2 className="animate-spin" /> : (role === 'student' ? 'Next: Enroll Face' : 'Register')}
+          </Button>
+        </form>
+       </Form>
+    );
+  }
 
   return (
     <Card className="w-full max-w-md">
       <CardHeader>
         <CardTitle>{roleTitle} Portal</CardTitle>
         <CardDescription>
-          {activeTab === 'login' ? 'Sign in to your account' : 'Create a new account'}
+          {activeTab === 'login' 
+            ? 'Sign in to your account' 
+            : (registrationStep === 'details' ? 'Create a new account' : 'Step 2: Face Enrollment')}
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <Tabs value={activeTab} onValueChange={(tab) => { setActiveTab(tab); setRegistrationStep('details'); }} className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="login" disabled={isLoading}>Login</TabsTrigger>
             <TabsTrigger value="register" disabled={isLoading}>Register</TabsTrigger>
           </TabsList>
           <TabsContent value="login">
              <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 pt-4">
+              <form onSubmit={form.handleSubmit(handleLoginSubmit)} className="space-y-6 pt-4">
                  <FormField
                   control={form.control}
                   name="email"
@@ -160,45 +244,7 @@ export function AuthForm() {
              </Form>
           </TabsContent>
           <TabsContent value="register">
-             <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 pt-4">
-                 <FormField
-                  control={form.control}
-                  name="email"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>College Email</FormLabel>
-                      <FormControl>
-                        <div className="relative">
-                           <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                           <Input placeholder="your.name@vit.edu.in" {...field} className="pl-10" />
-                        </div>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                 <FormField
-                  control={form.control}
-                  name="password"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Create Password</FormLabel>
-                       <FormControl>
-                         <div className="relative">
-                            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                            <Input type="password" placeholder="Choose a strong password" {...field} className="pl-10" />
-                         </div>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <Button type="submit" className="w-full" disabled={isLoading}>
-                  {isLoading ? <Loader2 className="animate-spin" /> : 'Register'}
-                </Button>
-              </form>
-             </Form>
+            {renderRegisterForm()}
           </TabsContent>
         </Tabs>
       </CardContent>

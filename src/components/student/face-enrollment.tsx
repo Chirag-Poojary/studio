@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
@@ -10,7 +11,12 @@ import { Alert, AlertDescription, AlertTitle } from '../ui/alert';
 
 type EnrollmentStatus = 'idle' | 'camera_on' | 'picture_taken' | 'enrolling' | 'enrolled';
 
-export function FaceEnrollment() {
+type FaceEnrollmentProps = {
+  onEnrollmentComplete?: (faceDataUri: string) => void;
+  isPartOfRegistration?: boolean;
+};
+
+export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = false }: FaceEnrollmentProps) {
   const [status, setStatus] = useState<EnrollmentStatus>('idle');
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [isClient, setIsClient] = useState(false);
@@ -20,14 +26,16 @@ export function FaceEnrollment() {
 
   useEffect(() => {
     setIsClient(true);
-    // Check local storage to see if user is already enrolled
-    const enrolled = localStorage.getItem('faceEnrolled');
-    if (enrolled === 'true') {
-        setStatus('enrolled');
-        const storedImage = localStorage.getItem('enrolledFaceDataUri');
-        if(storedImage) setImageSrc(storedImage);
+    // Check local storage to see if user is already enrolled, but only if not part of registration
+    if (!isPartOfRegistration) {
+        const enrolled = localStorage.getItem('faceEnrolled');
+        if (enrolled === 'true') {
+            setStatus('enrolled');
+            const storedImage = localStorage.getItem('enrolledFaceDataUri');
+            if(storedImage) setImageSrc(storedImage);
+        }
     }
-  }, []);
+  }, [isPartOfRegistration]);
 
   const startCamera = useCallback(async () => {
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
@@ -84,12 +92,16 @@ export function FaceEnrollment() {
 
       if (result.success) {
         setStatus('enrolled');
-        localStorage.setItem('faceEnrolled', 'true');
-        localStorage.setItem('enrolledFaceDataUri', imageSrc); // Store for verification demo
-        toast({
-          title: "Enrollment Successful!",
-          description: result.message,
-        });
+        if (isPartOfRegistration && onEnrollmentComplete) {
+            onEnrollmentComplete(imageSrc);
+        } else {
+            localStorage.setItem('faceEnrolled', 'true');
+            localStorage.setItem('enrolledFaceDataUri', imageSrc); // Store for verification demo
+             toast({
+                title: "Enrollment Successful!",
+                description: result.message,
+            });
+        }
       } else {
         throw new Error(result.message);
       }
@@ -111,8 +123,12 @@ export function FaceEnrollment() {
   };
 
   useEffect(() => {
+    // Automatically start camera when the component mounts for registration
+    if (isPartOfRegistration) {
+      startCamera();
+    }
     return () => stopCamera();
-  }, [stopCamera]);
+  }, [stopCamera, isPartOfRegistration, startCamera]);
 
   if (!isClient) {
     return (
@@ -122,8 +138,8 @@ export function FaceEnrollment() {
         </Card>
     );
   }
-
-  if (status === 'enrolled') {
+  
+  if (status === 'enrolled' && !isPartOfRegistration) {
     return (
         <Card>
             <CardHeader>
@@ -139,7 +155,7 @@ export function FaceEnrollment() {
                     <AlertTitle className="text-green-800">You're all set!</AlertTitle>
                     <AlertDescription className="text-green-700">
                         You can now use face verification to mark your attendance during live lecture sessions.
-                    </AlertDescription>
+                    </Description>
                 </Alert>
                 {imageSrc && (
                     <div className="mt-4 text-center">
@@ -152,20 +168,26 @@ export function FaceEnrollment() {
     );
   }
 
+  const Wrapper = isPartOfRegistration ? 'div' : Card;
+  const wrapperProps = isPartOfRegistration ? {} : { className: "w-full" };
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Face Biometric Enrollment</CardTitle>
-        <CardDescription>
-          Register your face to use our secure, one-tap attendance system.
-        </CardDescription>
-      </CardHeader>
+    <Wrapper {...wrapperProps}>
+      {!isPartOfRegistration && (
+        <CardHeader>
+          <CardTitle>Face Biometric Enrollment</CardTitle>
+          <CardDescription>
+            Register your face to use our secure, one-tap attendance system.
+          </CardDescription>
+        </CardHeader>
+      )}
       <CardContent className="flex flex-col items-center justify-center">
         <div className="w-64 h-64 rounded-lg bg-secondary flex items-center justify-center overflow-hidden border">
-          {status === 'camera_on' && <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />}
-          {imageSrc && <img src={imageSrc} alt="Student snapshot" className="w-full h-full object-cover" />}
+          {status === 'camera_on' && <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover scale-x-[-1]" />}
+          {imageSrc && <img src={imageSrc} alt="Student snapshot" className="w-full h-full object-cover  scale-x-[-1]" />}
           {status === 'idle' && <Camera className="w-16 h-16 text-muted-foreground" />}
           {status === 'enrolling' && <Loader2 className="w-16 h-16 text-primary animate-spin" />}
+          {status === 'enrolled' && isPartOfRegistration && <CheckCircle className="w-16 h-16 text-green-500" />}
         </div>
         <canvas ref={canvasRef} className="hidden" />
       </CardContent>
@@ -190,7 +212,10 @@ export function FaceEnrollment() {
             Enrolling...
           </Button>
         )}
+        {status === 'enrolled' && isPartOfRegistration && (
+            <p className="text-green-600 font-semibold text-center">Enrollment successful!</p>
+        )}
       </CardFooter>
-    </Card>
+    </Wrapper>
   );
 }
