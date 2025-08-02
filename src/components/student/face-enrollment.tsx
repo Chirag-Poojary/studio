@@ -6,7 +6,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from '@/components/ui/button';
 import { Camera, CheckCircle, Loader2, RefreshCw, UserCheck, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { enrollFace } from '@/ai/flows/enroll-face';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { auth, db } from '@/lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -28,6 +27,7 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { toast } = useToast();
   const [enrollmentMessage, setEnrollmentMessage] = useState('');
+  const [hasEnrolledFace, setHasEnrolledFace] = useState(false);
 
   useEffect(() => {
     setIsClient(true);
@@ -39,15 +39,9 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
           if (userDoc.exists() && userDoc.data().faceDataUri) {
             setStatus('enrolled');
             setImageSrc(userDoc.data().faceDataUri);
-          } else {
-            setStatus('idle');
+            setHasEnrolledFace(true);
           }
         }
-      } else {
-         if (isPartOfRegistration) {
-            // For registration, we create a temporary user object for the AI flow
-            setCurrentUser({ uid: `temp-id-${Date.now()}` });
-         }
       }
     });
     return () => unsubscribe();
@@ -62,7 +56,8 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
   }, []);
 
   const startCamera = useCallback(async () => {
-    stopCamera(); 
+    setStatus('idle');
+    setImageSrc(null);
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true });
@@ -80,7 +75,7 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
         setStatus('idle');
       }
     }
-  }, [toast, stopCamera]);
+  }, [toast]);
 
 
   const takePicture = useCallback(() => {
@@ -101,70 +96,59 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
   }, [stopCamera]);
   
   const handleEnrollment = async () => {
-    if (!imageSrc || !currentUser) return;
+    if (!imageSrc) return;
     setStatus('enrolling');
-    try {
-      const result = await enrollFace({
-        studentPhotoDataUri: imageSrc,
-        studentId: currentUser.uid,
-      });
 
-      if (result.success) {
-        setEnrollmentMessage(result.message);
-        setStatus('enrolled');
-        if (isPartOfRegistration && onEnrollmentComplete) {
-            onEnrollmentComplete(imageSrc);
-             toast({
-                title: "Enrollment Successful!",
-                description: "Completing your registration...",
-            });
-        } else if (!isPartOfRegistration && currentUser.uid) { // Ensure there is a real user
+    if (isPartOfRegistration && onEnrollmentComplete) {
+      // The auth form will handle the AI check and user creation
+      onEnrollmentComplete(imageSrc);
+      setStatus('enrolled');
+    } else if (currentUser?.uid) {
+        try {
             await updateDoc(doc(db, 'users', currentUser.uid), {
               faceDataUri: imageSrc
             });
             toast({
-                title: "Enrollment Successful!",
-                description: result.message,
+                title: "Re-enrollment Successful!",
+                description: "Your new face data has been saved.",
+            });
+            setStatus('enrolled');
+            setHasEnrolledFace(true);
+        } catch (error) {
+            console.error("Re-enrollment failed:", error);
+            setStatus('enrollment_failed');
+             toast({
+                variant: "destructive",
+                title: "Re-enrollment Failed",
+                description: "Could not save your new face data.",
             });
         }
-      } else {
-        throw new Error(result.message || "The AI model could not verify a clear face in the photo. Please try again.");
-      }
-    } catch (error) {
-      console.error("Enrollment failed:", error);
-      const errorMessage = error instanceof Error ? error.message : "An unknown error occurred. Please try again.";
-      setEnrollmentMessage(errorMessage);
-      setStatus('enrollment_failed');
-      toast({
-        variant: "destructive",
-        title: "Enrollment Failed",
-        description: errorMessage,
-      });
     }
   };
 
   const reset = () => {
     setImageSrc(null);
-    setStatus('idle');
-    setEnrollmentMessage('');
-    if (!videoRef.current?.srcObject) {
-       startCamera();
-    }
+    setHasEnrolledFace(false);
+    startCamera();
   };
 
   useEffect(() => {
-    if (status === 'idle' && isClient && !videoRef.current?.srcObject) {
+    if (isClient && !hasEnrolledFace && !isPartOfRegistration) {
       startCamera();
     }
-    // Only stop camera if it's not needed anymore
-    return () => {
-        if(status !== 'camera_on' && status !== 'picture_taken') {
-            stopCamera();
-        }
+     // Cleanup camera on unmount
+    return () => stopCamera();
+  }, [isClient, hasEnrolledFace, isPartOfRegistration, startCamera, stopCamera]);
+  
+  // Specific effect for registration flow to start camera
+  useEffect(() => {
+    if (isPartOfRegistration) {
+      startCamera();
     }
-  }, [status, isClient, startCamera, stopCamera]);
+  }, [isPartOfRegistration, startCamera]);
 
-  if (!isClient) {
+
+  if (!isClient && !isPartOfRegistration) {
     return (
         <Card>
             <CardHeader><CardTitle>Face Biometrics</CardTitle></CardHeader>
@@ -173,7 +157,7 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
     );
   }
   
-  if (status === 'enrolled' && !isPartOfRegistration) {
+  if (hasEnrolledFace && !isPartOfRegistration && status === 'enrolled') {
     return (
         <Card>
             <CardHeader>
@@ -188,7 +172,7 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
                     <CheckCircle className="h-4 w-4 !text-green-600" />
                     <AlertTitle className="text-green-800">You're all set!</AlertTitle>
                     <AlertDescription className="text-green-700">
-                        You can now use face verification to mark your attendance during live lecture sessions.
+                        You can now use face verification to mark your attendance.
                     </AlertDescription>
                 </Alert>
                 {imageSrc && (
@@ -216,7 +200,7 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
         <CardHeader>
           <CardTitle>Face Biometric Enrollment</CardTitle>
           <CardDescription>
-            Register your face to use our secure, one-tap attendance system.
+            Register your face to use our secure attendance system.
           </CardDescription>
         </CardHeader>
       )}
@@ -224,8 +208,7 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
         <div className="w-64 h-64 rounded-lg bg-secondary flex items-center justify-center overflow-hidden border">
           {status === 'camera_on' && <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover scale-x-[-1]" />}
           {imageSrc && <img src={imageSrc} alt="Student snapshot" className="w-full h-full object-cover  scale-x-[-1]" />}
-          {(status === 'idle' && !imageSrc) && <Loader2 className="w-16 h-16 text-muted-foreground animate-spin" />}
-          {status === 'enrolling' && <Loader2 className="w-16 h-16 text-primary animate-spin" />}
+          {(status === 'idle' || status === 'enrolling') && <Loader2 className="w-16 h-16 text-muted-foreground animate-spin" />}
           {status === 'enrolled' && isPartOfRegistration && <CheckCircle className="w-16 h-16 text-green-500" />}
           {status === 'enrollment_failed' && <AlertTriangle className="w-16 h-16 text-destructive" />}
         </div>
@@ -241,13 +224,13 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
         {status === 'camera_on' && <Button onClick={takePicture}>Take Picture</Button>}
         {(status === 'picture_taken' || status === 'enrollment_failed') && (
           <div className="flex justify-center gap-2">
-            <Button variant="outline" onClick={reset}>
+            <Button variant="outline" onClick={startCamera}>
               <RefreshCw className="mr-2 h-4 w-4" /> Retake
             </Button>
             <Button onClick={handleEnrollment}>Enroll This Picture</Button>
           </div>
         )}
-         {status === 'enrolling' && (
+         {status === 'enrolling' && isPartOfRegistration && (
           <Button disabled>
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             Enrolling...

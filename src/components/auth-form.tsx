@@ -19,11 +19,12 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { Mail, Lock, Loader2, ArrowLeft, User, UserCheck } from 'lucide-react';
+import { Mail, Lock, Loader2, ArrowLeft, User, UserCheck, Library } from 'lucide-react';
 import { auth, db } from '@/lib/firebase';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, getAuth, onAuthStateChanged } from 'firebase/auth';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { FaceEnrollment } from '@/components/student/face-enrollment';
+import { enrollFace } from '@/ai/flows/enroll-face';
 
 const formSchema = z.object({
   email: z.string().email({ message: 'Please enter a valid Outlook email address.' }).refine(
@@ -31,6 +32,14 @@ const formSchema = z.object({
     { message: 'Please use your college-provided Outlook ID (e.g., name@vit.edu.in).' }
   ),
   password: z.string().min(8, { message: 'Password must be at least 8 characters long.' }),
+  rollNo: z.string().min(1, { message: "Roll number is required."}).optional(),
+}).refine(data => {
+    // make rollNo required for students
+    const role = new URLSearchParams(window.location.search).get('role') || 'student';
+    return role !== 'student' || (data.rollNo && data.rollNo.length > 0);
+}, {
+    message: "Roll number is required for students.",
+    path: ["rollNo"],
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -51,36 +60,45 @@ export function AuthForm() {
     defaultValues: {
       email: '',
       password: '',
+      rollNo: '',
     },
   });
 
-  const handleRegistrationSubmit = async (data: FormValues) => {
-    setIsLoading(true);
+  const handleRegistrationDetailsSubmit = (data: FormValues) => {
     if (role === 'student') {
       setRegistrationData(data);
       setRegistrationStep('face-enrollment');
     } else {
-      await completeRegistration(data);
+      completeRegistration(data);
     }
-    setIsLoading(false);
   };
   
   const completeRegistration = async (data: FormValues, faceDataUri?: string) => {
     setIsLoading(true);
-    const { email, password } = data;
+    const { email, password, rollNo } = data;
     try {
+      // Step 1: Create user in Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
-      const userData: { email: string | null; role: string; faceDataUri?: string } = {
+      // Step 2: Prepare user data for Firestore
+      const userData: { email: string | null; role: string; faceDataUri?: string; rollNo?: string } = {
         email: user.email,
         role: role,
       };
 
-      if (role === 'student' && faceDataUri) {
-        userData.faceDataUri = faceDataUri;
+      if (role === 'student') {
+        if (faceDataUri) {
+            userData.faceDataUri = faceDataUri;
+        } else {
+            throw new Error("Face enrollment is required for student registration.");
+        }
+        if (rollNo) {
+            userData.rollNo = rollNo;
+        }
       }
 
+      // Step 3: Save user data to Firestore
       await setDoc(doc(db, 'users', user.uid), userData);
 
       toast({
@@ -95,18 +113,42 @@ export function AuthForm() {
       toast({
         variant: 'destructive',
         title: 'Registration Failed',
-        description: error.message || 'An unknown error occurred.',
+        description: error.code === 'auth/email-already-in-use' 
+            ? 'This email is already registered. Please log in.' 
+            : (error.message || 'An unknown error occurred.'),
       });
+      setRegistrationStep('details');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleFaceEnrolled = (faceDataUri: string) => {
-    if (registrationData) {
-      completeRegistration(registrationData, faceDataUri);
-    }
+  const handleFaceEnrolled = async (faceDataUri: string) => {
+      if (registrationData) {
+          setIsLoading(true);
+          try {
+              const result = await enrollFace({
+                  studentPhotoDataUri: faceDataUri,
+                  studentId: `temp-id-${Date.now()}` // Use a temporary ID for the check
+              });
+
+              if (result.success) {
+                  // Now that face enrollment is verified by AI, complete the registration
+                  await completeRegistration(registrationData, faceDataUri);
+              } else {
+                  throw new Error(result.message || "Face enrollment failed AI check.");
+              }
+          } catch (error: any) {
+              toast({
+                  variant: 'destructive',
+                  title: 'Enrollment Failed',
+                  description: error.message || "Could not complete registration."
+              });
+              setIsLoading(false);
+          }
+      }
   };
+
 
   const handleLoginSubmit = async (data: FormValues) => {
     setIsLoading(true);
@@ -131,7 +173,7 @@ export function AuthForm() {
       toast({
         variant: 'destructive',
         title: 'Login Failed',
-        description: error.message || 'Invalid credentials or user not found.',
+        description: error.code === 'auth/invalid-credential' ? 'Invalid email or password.' : 'An error occurred.',
       });
     } finally {
         setIsLoading(false);
@@ -153,7 +195,25 @@ export function AuthForm() {
     }
     return (
        <Form {...form}>
-        <form onSubmit={form.handleSubmit(handleRegistrationSubmit)} className="space-y-6 pt-4">
+        <form onSubmit={form.handleSubmit(handleRegistrationDetailsSubmit)} className="space-y-6 pt-4">
+           {role === 'student' && (
+              <FormField
+                control={form.control}
+                name="rollNo"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Roll Number</FormLabel>
+                    <FormControl>
+                      <div className="relative">
+                         <Library className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                         <Input placeholder="e.g. S21101" {...field} className="pl-10" />
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+           )}
            <FormField
             control={form.control}
             name="email"
@@ -210,8 +270,8 @@ export function AuthForm() {
       <CardContent>
         <Tabs value={activeTab} onValueChange={(tab) => { setActiveTab(tab); setRegistrationStep('details'); form.reset(); setIsLoading(false); }} className="w-full">
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="login" disabled={isLoading}>Login</TabsTrigger>
-            <TabsTrigger value="register" disabled={isLoading || (role === 'student' && registrationStep === 'face-enrollment')}>Register</TabsTrigger>
+            <TabsTrigger value="login" disabled={isLoading || (role === 'student' && registrationStep === 'face-enrollment')}>Login</TabsTrigger>
+            <TabsTrigger value="register" disabled={isLoading}>Register</TabsTrigger>
           </TabsList>
           <TabsContent value="login">
              <Form {...form}>
