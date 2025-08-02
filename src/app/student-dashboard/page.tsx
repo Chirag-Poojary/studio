@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation';
 import { LogOut } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { UserCheck } from 'lucide-react';
+import { FaceEnrollment } from '@/components/student/face-enrollment';
 
 export default function StudentDashboard() {
   const router = useRouter();
@@ -26,16 +27,20 @@ export default function StudentDashboard() {
         </Button>
       </DashboardHeader>
       <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8 bg-muted/40">
-         <div className="grid gap-4 md:gap-8">
-            <Card>
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                        <UserCheck className="h-6 w-6 text-primary"/>
-                        Student Dashboard
-                    </CardTitle>
-                    <CardDescription>Welcome! Here you can view your attendance history.</CardDescription>
-                </CardHeader>
-            </Card>
+         <div className="grid gap-4 md:grid-cols-2 md:gap-8">
+            <div className="space-y-4">
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <UserCheck className="h-6 w-6 text-primary"/>
+                            Student Dashboard
+                        </CardTitle>
+                        <CardDescription>Welcome! Here you can view your attendance history and manage your biometric enrollment.</CardDescription>
+                    </CardHeader>
+                </Card>
+                <FaceEnrollment />
+            </div>
+
             <AttendanceHistory />
         </div>
       </main>

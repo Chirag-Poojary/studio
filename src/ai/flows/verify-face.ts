@@ -53,8 +53,9 @@ Student Name: {{{studentName}}}
 Live Photo: {{media url=livePhotoDataUri}}
 Enrolled Photo: {{media url=enrolledFaceDataUri}}
 
-Analyze the two images and determine if they match. Provide a confidence score (between 0 and 1) and a reason for your decision.
-`,config: {
+Analyze the two images and determine if they match. Provide a confidence score (between 0 and 1) and a reason for your decision. A confidence score above 0.8 should be considered a match.
+`,
+  config: {
     safetySettings: [
       {
         category: 'HARM_CATEGORY_DANGEROUS_CONTENT',

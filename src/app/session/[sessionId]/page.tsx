@@ -7,26 +7,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Clock, Users, XCircle, CheckCircle, Hourglass } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DashboardHeader } from '@/components/dashboard-header';
+import { db } from '@/lib/firebase';
+import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
 
 type Student = {
   name: string;
   rollNo: string;
+  email: string;
 };
-
-// Mock student data
-const MOCK_STUDENTS: Student[] = [
-    { name: 'Alice Johnson', rollNo: 'S001' },
-    { name: 'Bob Williams', rollNo: 'S002' },
-    { name: 'Charlie Brown', rollNo: 'S003' },
-    { name: 'Diana Miller', rollNo: 'S004' },
-    { name: 'Ethan Davis', rollNo: 'S005' },
-    { name: 'Fiona Garcia', rollNo: 'S006' },
-];
 
 export default function SessionPage() {
   const params = useParams();
@@ -37,6 +29,7 @@ export default function SessionPage() {
   const [sessionActive, setSessionActive] = useState(true);
   const [qrCodeUrl, setQrCodeUrl] = useState('');
   const [isClient, setIsClient] = useState(false);
+  const [totalStudents, setTotalStudents] = useState(0); 
 
   const lectureDetails = useMemo(() => {
     return {
@@ -56,25 +49,26 @@ export default function SessionPage() {
   }, [sessionId]);
 
   useEffect(() => {
-    if (!sessionActive || !isClient) return;
-
-    // Simulate students joining every few seconds
-    const interval = setInterval(() => {
-      setAttendedStudents(prev => {
-        if (prev.length < MOCK_STUDENTS.length) {
-          const nextStudent = MOCK_STUDENTS[prev.length];
-          return [...prev, nextStudent];
+    if (!sessionId) return;
+    
+    const sessionDocRef = doc(db, 'sessions', sessionId);
+    const unsubscribe = onSnapshot(sessionDocRef, (doc) => {
+        if (doc.exists()) {
+            const data = doc.data();
+            setAttendedStudents(data.attendedStudents || []);
+            setSessionActive(data.active);
+            setTotalStudents(data.totalStudents || 60); // Mock total students or get from session data
         }
-        clearInterval(interval);
-        return prev;
-      });
-    }, 3000);
+    });
 
-    return () => clearInterval(interval);
-  }, [sessionActive, isClient]);
+    return () => unsubscribe();
+  }, [sessionId]);
 
-  const endSession = () => {
-    setSessionActive(false);
+  const endSession = async () => {
+    if (sessionId) {
+      const sessionDocRef = doc(db, 'sessions', sessionId);
+      await updateDoc(sessionDocRef, { active: false });
+    }
   };
 
   return (
@@ -116,7 +110,7 @@ export default function SessionPage() {
                     <div className="flex items-center gap-2">
                         <Users className="h-5 w-5 text-muted-foreground" />
                         <span className="font-bold text-2xl">{attendedStudents.length}</span>
-                        <span className="text-sm text-muted-foreground">/ {MOCK_STUDENTS.length}</span>
+                        <span className="text-sm text-muted-foreground">/ {totalStudents}</span>
                     </div>
                 </CardHeader>
                 <CardContent>

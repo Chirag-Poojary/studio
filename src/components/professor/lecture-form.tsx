@@ -11,7 +11,6 @@ import { Button } from '@/components/ui/button';
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -23,6 +22,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
+import { db } from '@/lib/firebase';
+import { doc, setDoc } from 'firebase/firestore';
 
 const lectureFormSchema = z.object({
   department: z.string().min(2, { message: 'Department is required.' }),
@@ -48,23 +49,40 @@ export function LectureForm() {
     },
   });
 
-  function onSubmit(data: LectureFormValues) {
-    // In a real app, this would also get the professor's location
-    // and save the session to Firestore.
-    const sessionId = Date.now().toString(); // Mock session ID
+  async function onSubmit(data: LectureFormValues) {
+    const sessionId = Date.now().toString();
     
-    // Pass lecture data through query params to the session page
-    const query = new URLSearchParams({
-      ...data,
-      lectureDate: data.lectureDate.toISOString(),
-    }).toString();
-    
-    router.push(`/session/${sessionId}?${query}`);
+    try {
+      // Save session to Firestore
+      const sessionDocRef = doc(db, 'sessions', sessionId);
+      await setDoc(sessionDocRef, {
+        ...data,
+        lectureDate: data.lectureDate.toISOString(),
+        createdAt: new Date().toISOString(),
+        active: true,
+        attendedStudents: [],
+      });
+      
+      const query = new URLSearchParams({
+        ...data,
+        lectureDate: data.lectureDate.toISOString(),
+      }).toString();
+      
+      router.push(`/session/${sessionId}?${query}`);
 
-    toast({
-      title: "Lecture Session Created!",
-      description: "Redirecting you to the live session page.",
-    });
+      toast({
+        title: "Lecture Session Created!",
+        description: "Redirecting you to the live session page.",
+      });
+
+    } catch (error) {
+        console.error("Error creating session:", error);
+        toast({
+            variant: "destructive",
+            title: "Failed to create session",
+            description: "Could not save session to the database. Please try again."
+        });
+    }
   }
 
   return (

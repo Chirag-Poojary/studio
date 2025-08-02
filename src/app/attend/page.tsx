@@ -9,6 +9,9 @@ import { Loader2, MapPin, Camera, CheckCircle, XCircle, UserCheck } from 'lucide
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { verifyFace } from '@/ai/flows/verify-face';
+import { auth, db } from '@/lib/firebase';
+import { doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth';
 
 type AttendanceStatus = 'idle' | 'locating' | 'location_ok' | 'location_fail' | 'camera_on' | 'verifying' | 'verified_ok' | 'verified_fail';
 
@@ -19,9 +22,22 @@ function AttendanceProcessor() {
 
   const [status, setStatus] = useState<AttendanceStatus>('idle');
   const [progress, setProgress] = useState(0);
-  const [liveImageSrc, setLiveImageSrc] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        const userDocRef = doc(db, 'users', user.uid);
+        const userDoc = await getDoc(userDocRef);
+        if (userDoc.exists()) {
+          setCurrentUser({ uid: user.uid, ...userDoc.data() });
+        }
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   const startCamera = useCallback(async () => {
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
@@ -44,7 +60,7 @@ function AttendanceProcessor() {
   }, []);
   
   const takePictureAndVerify = useCallback(async () => {
-    if (videoRef.current && canvasRef.current) {
+    if (videoRef.current && canvasRef.current && currentUser) {
         const video = videoRef.current;
         const canvas = canvasRef.current;
         canvas.width = video.videoWidth;
@@ -53,12 +69,11 @@ function AttendanceProcessor() {
         if (context) {
             context.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
             const dataUrl = canvas.toDataURL('image/jpeg');
-            setLiveImageSrc(dataUrl);
             stopCamera();
             setStatus('verifying');
             setProgress(80);
 
-            const enrolledFaceDataUri = localStorage.getItem('enrolledFaceDataUri');
+            const enrolledFaceDataUri = currentUser.faceDataUri;
             if (!enrolledFaceDataUri) {
                 toast({ variant: 'destructive', title: 'Not Enrolled', description: 'You have not enrolled your face. Please enroll from your dashboard.' });
                 setStatus('verified_fail');
@@ -69,12 +84,38 @@ function AttendanceProcessor() {
                 const result = await verifyFace({
                     livePhotoDataUri: dataUrl,
                     enrolledFaceDataUri: enrolledFaceDataUri,
-                    studentName: 'Mock Student' // from auth context in real app
+                    studentName: currentUser.email // or a name field if you have one
                 });
                 if (result.isMatch) {
                     setStatus('verified_ok');
                     setProgress(100);
                     toast({ title: 'Attendance Marked!', description: `Confidence: ${(result.confidence * 100).toFixed(2)}%` });
+                    
+                    // Add student to session attendance
+                    if (sessionId) {
+                        const sessionDocRef = doc(db, 'sessions', sessionId);
+                        await updateDoc(sessionDocRef, {
+                            attendedStudents: arrayUnion({
+                                uid: currentUser.uid,
+                                email: currentUser.email,
+                                name: currentUser.email.split('@')[0], // a temporary name
+                                rollNo: `S${currentUser.uid.substring(0,4)}`,
+                                checkInTime: new Date().toISOString()
+                            })
+                        });
+                        // also add to student's record
+                        const userDocRef = doc(db, 'users', currentUser.uid);
+                        const sessionDetails = (await getDoc(sessionDocRef)).data();
+                        await updateDoc(userDocRef, {
+                          attendanceHistory: arrayUnion({
+                            sessionId,
+                            subject: sessionDetails?.subject || 'Unknown Subject',
+                            date: sessionDetails?.lectureDate || new Date().toISOString(),
+                            status: 'Present'
+                          })
+                        });
+                    }
+
                 } else {
                     setStatus('verified_fail');
                     toast({ variant: 'destructive', title: 'Verification Failed', description: result.reason });
@@ -85,7 +126,7 @@ function AttendanceProcessor() {
             }
         }
     }
-  }, [stopCamera, toast]);
+  }, [stopCamera, toast, currentUser, sessionId]);
 
   useEffect(() => {
     if (status === 'idle') {
@@ -98,7 +139,7 @@ function AttendanceProcessor() {
         setProgress(33);
         // Automatically start camera
         startCamera();
-      }, 2000);
+      }, 1500);
     }
   }, [status, startCamera]);
 
@@ -139,7 +180,7 @@ function AttendanceProcessor() {
             <XCircle className="h-16 w-16 mx-auto text-destructive" />
             <h2 className="text-2xl font-bold mt-4">Attendance Failed</h2>
             <p className="text-muted-foreground">{status === 'location_fail' ? "You are not in the allowed range for this lecture." : "Face verification failed. Please try again or contact your professor."}</p>
-             <Button onClick={() => setStatus('idle')} variant="outline" className="mt-4">Try Again</Button>
+             <Button onClick={() => window.location.reload()} variant="outline" className="mt-4">Try Again</Button>
           </div>
         );
       default:

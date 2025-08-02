@@ -8,6 +8,8 @@ import { Camera, CheckCircle, Loader2, RefreshCw, UserCheck } from 'lucide-react
 import { useToast } from '@/hooks/use-toast';
 import { enrollFace } from '@/ai/flows/enroll-face';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { auth } from '@/lib/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 
 type EnrollmentStatus = 'idle' | 'camera_on' | 'picture_taken' | 'enrolling' | 'enrolled';
 
@@ -20,21 +22,27 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
   const [status, setStatus] = useState<EnrollmentStatus>('idle');
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [isClient, setIsClient] = useState(false);
+  const [currentUser, setCurrentUser] = useState<any>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { toast } = useToast();
 
   useEffect(() => {
     setIsClient(true);
-    // Check local storage to see if user is already enrolled, but only if not part of registration
-    if (!isPartOfRegistration) {
-        const enrolled = localStorage.getItem('faceEnrolled');
-        if (enrolled === 'true') {
-            setStatus('enrolled');
-            const storedImage = localStorage.getItem('enrolledFaceDataUri');
-            if(storedImage) setImageSrc(storedImage);
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+        if(user) {
+            setCurrentUser(user);
+             if (!isPartOfRegistration) {
+                const enrolled = localStorage.getItem(`faceEnrolled_${user.uid}`);
+                if (enrolled === 'true') {
+                    setStatus('enrolled');
+                    const storedImage = localStorage.getItem(`enrolledFaceDataUri_${user.uid}`);
+                    if(storedImage) setImageSrc(storedImage);
+                }
+            }
         }
-    }
+    });
+     return () => unsubscribe();
   }, [isPartOfRegistration]);
 
   const startCamera = useCallback(async () => {
@@ -82,12 +90,12 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
   }, [stopCamera]);
   
   const handleEnrollment = async () => {
-    if (!imageSrc) return;
+    if (!imageSrc || !currentUser) return;
     setStatus('enrolling');
     try {
       const result = await enrollFace({
         studentPhotoDataUri: imageSrc,
-        studentId: 'mock-student-id-123', // In real app, get from auth context
+        studentId: currentUser.uid,
       });
 
       if (result.success) {
@@ -95,8 +103,9 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
         if (isPartOfRegistration && onEnrollmentComplete) {
             onEnrollmentComplete(imageSrc);
         } else {
-            localStorage.setItem('faceEnrolled', 'true');
-            localStorage.setItem('enrolledFaceDataUri', imageSrc); // Store for verification demo
+            // Use user-specific keys for local storage
+            localStorage.setItem(`faceEnrolled_${currentUser.uid}`, 'true');
+            localStorage.setItem(`enrolledFaceDataUri_${currentUser.uid}`, imageSrc);
              toast({
                 title: "Enrollment Successful!",
                 description: result.message,
@@ -119,16 +128,15 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
   const reset = () => {
     setImageSrc(null);
     stopCamera();
-    startCamera();
+    if(status !== 'camera_on') startCamera();
   };
 
   useEffect(() => {
-    // Automatically start camera when the component mounts for registration
-    if (isPartOfRegistration) {
+    if (status === 'idle' || isPartOfRegistration) {
       startCamera();
     }
     return () => stopCamera();
-  }, [stopCamera, isPartOfRegistration, startCamera]);
+  }, [stopCamera, isPartOfRegistration, startCamera, status]);
 
   if (!isClient) {
     return (
@@ -185,14 +193,14 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
         <div className="w-64 h-64 rounded-lg bg-secondary flex items-center justify-center overflow-hidden border">
           {status === 'camera_on' && <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover scale-x-[-1]" />}
           {imageSrc && <img src={imageSrc} alt="Student snapshot" className="w-full h-full object-cover  scale-x-[-1]" />}
-          {status === 'idle' && <Camera className="w-16 h-16 text-muted-foreground" />}
+          {status === 'idle' && !isPartOfRegistration && <Camera className="w-16 h-16 text-muted-foreground" />}
           {status === 'enrolling' && <Loader2 className="w-16 h-16 text-primary animate-spin" />}
           {status === 'enrolled' && isPartOfRegistration && <CheckCircle className="w-16 h-16 text-green-500" />}
         </div>
         <canvas ref={canvasRef} className="hidden" />
       </CardContent>
       <CardFooter className="flex justify-center gap-2">
-        {status === 'idle' && (
+        {status === 'idle' && !isPartOfRegistration && (
           <Button onClick={startCamera}>
             <Camera className="mr-2 h-4 w-4" /> Start Camera
           </Button>
@@ -213,7 +221,7 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
           </Button>
         )}
         {status === 'enrolled' && isPartOfRegistration && (
-            <p className="text-green-600 font-semibold text-center">Enrollment successful!</p>
+            <p className="text-green-600 font-semibold text-center">Enrollment successful! Processing...</p>
         )}
       </CardFooter>
     </Wrapper>
