@@ -40,9 +40,10 @@ const registerSchema = z.object({
     { message: 'Please use your college-provided Outlook ID (e.g., name@vit.edu.in).' }
   ),
   password: z.string().min(8, { message: 'Password must be at least 8 characters long.' }),
-  rollNo: z.string().optional(),
+  rollNo: z.string().min(1, { message: 'Roll number is required.' }),
 }).refine(data => {
     const role = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '').get('role') || 'student';
+    // Only require rollNo if the role is student.
     return role !== 'student' || (data.rollNo && data.rollNo.length > 0);
 }, {
     message: "Roll number is required for students.",
@@ -86,6 +87,7 @@ export function AuthForm() {
       setRegistrationData(data);
       setRegistrationStep('face-enrollment');
     } else {
+      // Professors don't need face enrollment
       completeRegistration(data);
     }
   };
@@ -103,13 +105,11 @@ export function AuthForm() {
       };
 
       if (role === 'student') {
-        if (faceDataUri) {
+        if (faceDataUri && rollNo) {
             userData.faceDataUri = faceDataUri;
-        } else {
-            throw new Error("Face enrollment is required for student registration.");
-        }
-        if (rollNo) {
             userData.rollNo = rollNo;
+        } else {
+            throw new Error("Face enrollment and roll number are required for student registration.");
         }
       }
 
@@ -131,7 +131,8 @@ export function AuthForm() {
             ? 'This email is already registered. Please log in.' 
             : (error.message || 'An unknown error occurred.'),
       });
-      setRegistrationStep('details');
+      // On failure, stay on the current step or go back to details
+      // setRegistrationStep('details'); 
     } finally {
       setIsLoading(false);
     }
@@ -143,13 +144,13 @@ export function AuthForm() {
           try {
               const result = await enrollFace({
                   studentPhotoDataUri: faceDataUri,
-                  studentId: registrationData.rollNo || `temp-id-${Date.now()}`
+                  studentId: registrationData.rollNo!, // rollNo is now guaranteed by the form
               });
 
               if (result.success) {
                   await completeRegistration(registrationData, faceDataUri);
               } else {
-                  throw new Error(result.message || "Face enrollment failed AI check.");
+                  throw new Error(result.message || "AI check failed. Please use a clearer photo.");
               }
           } catch (error: any) {
               toast({
@@ -157,7 +158,7 @@ export function AuthForm() {
                   title: 'Enrollment Failed',
                   description: error.message || "Could not complete registration."
               });
-              setRegistrationStep('details');
+              // Don't go back to details, allow user to retry enrollment
           } finally {
               setIsLoading(false);
           }
@@ -189,7 +190,8 @@ export function AuthForm() {
         } else if (userRole === 'student') {
           router.push('/student-dashboard');
         } else {
-          throw new Error("Unknown user role.");
+          // Fallback or error for unknown role
+           throw new Error("Unknown user role. Please contact support.");
         }
       } else {
          throw new Error("User data not found in database. Please contact support.");

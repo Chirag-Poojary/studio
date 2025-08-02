@@ -15,7 +15,7 @@ import { doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 
-type AttendanceStatus = 'idle' | 'loading_user' | 'camera_on' | 'verifying' | 'verified_ok' | 'verified_fail' | 'error';
+type AttendanceStatus = 'idle' | 'loading_user' | 'camera_loading' |'camera_on' | 'verifying' | 'verified_ok' | 'verified_fail' | 'error';
 
 function AttendanceProcessor() {
   const searchParams = useSearchParams();
@@ -30,9 +30,17 @@ function AttendanceProcessor() {
   const [errorMessage, setErrorMessage] = useState('');
   const [hasCameraPermission, setHasCameraPermission] = useState(true);
 
+  const stopCamera = useCallback(() => {
+    if (videoRef.current && videoRef.current.srcObject) {
+      (videoRef.current.srcObject as MediaStream).getTracks().forEach(track => track.stop());
+      videoRef.current.srcObject = null;
+    }
+  }, []);
+
   const startCamera = useCallback(async () => {
+    setStatus('camera_loading');
+    setProgress(25);
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      setProgress(25);
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true });
         setHasCameraPermission(true);
@@ -75,15 +83,11 @@ function AttendanceProcessor() {
           setStatus('error');
       }
     });
-    return () => unsubscribe();
-  }, [startCamera]);
-
-  const stopCamera = useCallback(() => {
-    if (videoRef.current && videoRef.current.srcObject) {
-      (videoRef.current.srcObject as MediaStream).getTracks().forEach(track => track.stop());
-      videoRef.current.srcObject = null;
-    }
-  }, []);
+    return () => {
+      unsubscribe();
+      stopCamera();
+    };
+  }, [startCamera, stopCamera]);
   
   const takePictureAndVerify = useCallback(async () => {
     if (videoRef.current && canvasRef.current && currentUser) {
@@ -93,6 +97,8 @@ function AttendanceProcessor() {
         canvas.height = video.videoHeight;
         const context = canvas.getContext('2d');
         if (context) {
+            context.translate(video.videoWidth, 0);
+            context.scale(-1, 1);
             context.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
             const dataUrl = canvas.toDataURL('image/jpeg');
             stopCamera();
@@ -106,7 +112,7 @@ function AttendanceProcessor() {
                     studentName: currentUser.email
                 });
 
-                if (result.isMatch) {
+                if (result.isMatch && result.confidence > 0.8) {
                     setStatus('verified_ok');
                     setProgress(100);
                     toast({ title: 'Attendance Marked!', description: `Confidence: ${(result.confidence * 100).toFixed(2)}%` });
@@ -167,13 +173,13 @@ function AttendanceProcessor() {
     switch (status) {
       case 'loading_user':
          return <div className="text-center"><Loader2 className="h-12 w-12 animate-spin mx-auto text-primary" /><p className="mt-4">Loading your profile...</p></div>;
-      case 'idle':
+      case 'camera_loading':
         return <div className="text-center"><Loader2 className="h-12 w-12 animate-spin mx-auto text-primary" /><p className="mt-4">Starting camera...</p></div>;
       case 'camera_on':
         return (
           <div className="text-center">
             <div className="w-full max-w-sm aspect-square rounded-full bg-secondary mx-auto flex items-center justify-center overflow-hidden border-4 border-primary">
-              <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover scale-x-[-1]" />
+              <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
             </div>
              {!hasCameraPermission && (
                 <Alert variant="destructive" className="mt-4">

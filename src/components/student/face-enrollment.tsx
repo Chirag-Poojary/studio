@@ -12,7 +12,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { enrollFace } from '@/ai/flows/enroll-face';
 
-type EnrollmentStatus = 'idle' | 'camera_on' | 'picture_taken' | 'enrolling' | 'enrolled' | 'enrollment_failed';
+type EnrollmentStatus = 'idle' | 'camera_loading' | 'camera_on' | 'picture_taken' | 'enrolling' | 'enrolled' | 'enrollment_failed' | 'no_camera';
 
 type FaceEnrollmentProps = {
   onEnrollmentComplete?: (faceDataUri: string) => void;
@@ -20,34 +20,18 @@ type FaceEnrollmentProps = {
 };
 
 export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = false }: FaceEnrollmentProps) {
-  const [status, setStatus] = useState<EnrollmentStatus>('idle');
+  const [status, setStatus] = useState<EnrollmentStatus>(isPartOfRegistration ? 'camera_loading' : 'idle');
   const [imageSrc, setImageSrc] = useState<string | null>(null);
-  const [isClient, setIsClient] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { toast } = useToast();
   const [enrollmentMessage, setEnrollmentMessage] = useState('');
   const [hasEnrolledFace, setHasEnrolledFace] = useState(false);
+  const [isClient, setIsClient] = useState(false);
 
-  useEffect(() => {
+   useEffect(() => {
     setIsClient(true);
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        const userDocRef = doc(db, 'users', user.uid);
-        const userDoc = await getDoc(userDocRef);
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          setCurrentUser({ uid: user.uid, ...userData });
-          if (userData.faceDataUri) {
-            setStatus('enrolled');
-            setImageSrc(userData.faceDataUri);
-            setHasEnrolledFace(true);
-          }
-        }
-      }
-    });
-    return () => unsubscribe();
   }, []);
 
   const stopCamera = useCallback(() => {
@@ -59,7 +43,7 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
   }, []);
 
   const startCamera = useCallback(async () => {
-    setStatus('idle');
+    setStatus('camera_loading');
     setImageSrc(null);
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
       try {
@@ -75,11 +59,50 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
           title: "Camera Error",
           description: "Could not access your camera. Please check your browser permissions.",
         });
-        setStatus('idle');
+        setStatus('no_camera');
       }
+    } else {
+        setStatus('no_camera');
     }
   }, [toast]);
+  
+  // Effect for non-registration flow (dashboard)
+  useEffect(() => {
+    if (isPartOfRegistration || !isClient) return;
 
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        const userDocRef = doc(db, 'users', user.uid);
+        const userDoc = await getDoc(userDocRef);
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          setCurrentUser({ uid: user.uid, ...userData });
+          if (userData.faceDataUri) {
+            setHasEnrolledFace(true);
+            setStatus('enrolled');
+            setImageSrc(userData.faceDataUri);
+          } else {
+            // User is logged in but hasn't enrolled, start camera
+            startCamera();
+          }
+        }
+      }
+    });
+    return () => unsubscribe();
+  }, [isPartOfRegistration, isClient, startCamera]);
+
+  // Effect for registration flow
+  useEffect(() => {
+    if (isPartOfRegistration && isClient) {
+      startCamera();
+    }
+    // Clean up camera on unmount
+    return () => {
+      if (isPartOfRegistration) {
+        stopCamera();
+      }
+    };
+  }, [isPartOfRegistration, isClient, startCamera, stopCamera]);
 
   const takePicture = useCallback(() => {
     if (videoRef.current && canvasRef.current) {
@@ -89,6 +112,9 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
       canvas.height = video.videoHeight;
       const context = canvas.getContext('2d');
       if (context) {
+        // Flip the image horizontally for a mirror effect
+        context.translate(video.videoWidth, 0);
+        context.scale(-1, 1);
         context.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
         const dataUrl = canvas.toDataURL('image/jpeg');
         setImageSrc(dataUrl);
@@ -104,7 +130,9 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
 
     // This case is for the initial registration flow
     if (isPartOfRegistration && onEnrollmentComplete) {
-        onEnrollmentComplete(imageSrc);
+        // The onEnrollmentComplete will handle AI check and user creation
+        onEnrollmentComplete(imageSrc); 
+        // We don't set status to 'enrolled' here, auth-form will handle redirection
         return;
     } 
     
@@ -143,23 +171,13 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
     }
   };
 
-  const reset = () => {
+  const resetForReEnrollment = () => {
     setImageSrc(null);
-    setHasEnrolledFace(false); // Go back to enrollment view
-    setStatus('idle');
+    setHasEnrolledFace(false);
+    setStatus('camera_loading');
     setEnrollmentMessage('');
     startCamera(); // Immediately start the camera
   };
-  
-  // Effect to start camera on initial load for enrollment
-  useEffect(() => {
-    if (isClient && !hasEnrolledFace) {
-      startCamera();
-    }
-     // Cleanup camera on unmount
-    return () => stopCamera();
-  }, [isClient, hasEnrolledFace, startCamera, stopCamera]);
-
 
   if (!isClient && !isPartOfRegistration) {
     return (
@@ -196,7 +214,7 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
                 )}
             </CardContent>
              <CardFooter>
-                <Button variant="outline" onClick={reset}>
+                <Button variant="outline" onClick={resetForReEnrollment}>
                     <RefreshCw className="mr-2 h-4 w-4" /> Re-enroll
                 </Button>
             </CardFooter>
@@ -219,13 +237,19 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
       )}
       <CardContent className="flex flex-col items-center justify-center">
         <div className="w-64 h-64 rounded-lg bg-secondary flex items-center justify-center overflow-hidden border">
-          {status === 'camera_on' && <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover scale-x-[-1]" />}
-          {imageSrc && <img src={imageSrc} alt="Student snapshot" className="w-full h-full object-cover  scale-x-[-1]" />}
-          {(status === 'idle' || status === 'enrolling') && <Loader2 className="w-16 h-16 text-muted-foreground animate-spin" />}
-          {status === 'enrolled' && isPartOfRegistration && <CheckCircle className="w-16 h-16 text-green-500" />}
+          {status === 'camera_on' && <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />}
+          {imageSrc && <img src={imageSrc} alt="Student snapshot" className="w-full h-full object-cover" />}
+          {(status === 'camera_loading' || status === 'enrolling') && <Loader2 className="w-16 h-16 text-muted-foreground animate-spin" />}
+          {status === 'no_camera' && <AlertTriangle className="w-16 h-16 text-destructive" />}
           {status === 'enrollment_failed' && <AlertTriangle className="w-16 h-16 text-destructive" />}
         </div>
         <canvas ref={canvasRef} className="hidden" />
+        {status === 'no_camera' && (
+             <Alert variant={'destructive'} className="mt-4">
+                <AlertTitle>{'Camera Not Available'}</AlertTitle>
+                <AlertDescription>Please check your camera permissions and try again.</AlertDescription>
+            </Alert>
+        )}
         {enrollmentMessage && (status === 'enrollment_failed') && (
              <Alert variant={'destructive'} className="mt-4">
                 <AlertTitle>{'Enrollment Failed'}</AlertTitle>
@@ -246,14 +270,11 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
             </Button>
           </div>
         )}
-         {status === 'enrolling' && isPartOfRegistration && (
+         {status === 'enrolling' && (
           <Button disabled>
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             Enrolling...
           </Button>
-        )}
-        {status === 'enrolled' && isPartOfRegistration && (
-            <p className="text-green-600 font-semibold text-center">Enrollment successful! Completing registration...</p>
         )}
       </CardFooter>
     </Wrapper>
