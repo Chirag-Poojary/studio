@@ -77,11 +77,9 @@ export function AuthForm() {
     setIsLoading(true);
     const { email, password, rollNo } = data;
     try {
-      // Step 1: Create user in Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
-      // Step 2: Prepare user data for Firestore
       const userData: { email: string | null; role: string; faceDataUri?: string; rollNo?: string } = {
         email: user.email,
         role: role,
@@ -98,7 +96,6 @@ export function AuthForm() {
         }
       }
 
-      // Step 3: Save user data to Firestore
       await setDoc(doc(db, 'users', user.uid), userData);
 
       toast({
@@ -129,11 +126,10 @@ export function AuthForm() {
           try {
               const result = await enrollFace({
                   studentPhotoDataUri: faceDataUri,
-                  studentId: registrationData.rollNo || `temp-id-${Date.now()}` // Use roll no or temp id
+                  studentId: registrationData.rollNo || `temp-id-${Date.now()}`
               });
 
               if (result.success) {
-                  // Now that face enrollment is verified by AI, complete the registration
                   await completeRegistration(registrationData, faceDataUri);
               } else {
                   throw new Error(result.message || "Face enrollment failed AI check.");
@@ -144,6 +140,8 @@ export function AuthForm() {
                   title: 'Enrollment Failed',
                   description: error.message || "Could not complete registration."
               });
+              setRegistrationStep('details');
+          } finally {
               setIsLoading(false);
           }
       }
@@ -155,21 +153,30 @@ export function AuthForm() {
     const { email, password } = data;
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
       
-      const userDocRef = doc(db, 'users', userCredential.user.uid);
+      const userDocRef = doc(db, 'users', user.uid);
       const userDoc = await getDoc(userDocRef);
 
       if (userDoc.exists()) {
-        const userRole = userDoc.data().role;
-         toast({
+        const userData = userDoc.data();
+        const userRole = userData.role;
+
+        toast({
           title: 'Login Successful!',
           description: 'Redirecting to your dashboard...',
         });
 
-        const dashboardUrl = userRole === 'professor' ? '/professor-dashboard' : '/student-dashboard';
-        router.push(dashboardUrl);
+        if (userRole === 'professor') {
+          router.push('/professor-dashboard');
+        } else if (userRole === 'student') {
+          router.push('/student-dashboard');
+        } else {
+          // Fallback or error for unknown role
+          throw new Error("Unknown user role.");
+        }
       } else {
-         throw new Error("User role not found in database.");
+         throw new Error("User data not found in database. Please contact support.");
       }
 
     } catch (error: any) {
@@ -177,7 +184,9 @@ export function AuthForm() {
       toast({
         variant: 'destructive',
         title: 'Login Failed',
-        description: error.code === 'auth/invalid-credential' ? 'Invalid email or password.' : 'An error occurred during login.',
+        description: error.code === 'auth/invalid-credential' 
+            ? 'Invalid email or password.' 
+            : (error.message || 'An unknown error occurred during login.'),
       });
     } finally {
         setIsLoading(false);
@@ -326,3 +335,5 @@ export function AuthForm() {
     </Card>
   );
 }
+
+    
