@@ -26,15 +26,22 @@ import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { FaceEnrollment } from '@/components/student/face-enrollment';
 import { enrollFace } from '@/ai/flows/enroll-face';
 
-const formSchema = z.object({
+const loginSchema = z.object({
+    email: z.string().email({ message: 'Please enter a valid Outlook email address.' }).refine(
+        (email) => email.endsWith('@vit.edu.in'),
+        { message: 'Please use your college-provided Outlook ID (e.g., name@vit.edu.in).' }
+    ),
+    password: z.string().min(1, { message: 'Password is required.' }),
+});
+
+const registerSchema = z.object({
   email: z.string().email({ message: 'Please enter a valid Outlook email address.' }).refine(
     (email) => email.endsWith('@vit.edu.in'),
     { message: 'Please use your college-provided Outlook ID (e.g., name@vit.edu.in).' }
   ),
   password: z.string().min(8, { message: 'Password must be at least 8 characters long.' }),
-  rollNo: z.string().min(1, { message: "Roll number is required."}).optional(),
+  rollNo: z.string().optional(),
 }).refine(data => {
-    // make rollNo required for students
     const role = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '').get('role') || 'student';
     return role !== 'student' || (data.rollNo && data.rollNo.length > 0);
 }, {
@@ -42,7 +49,9 @@ const formSchema = z.object({
     path: ["rollNo"],
 });
 
-type FormValues = z.infer<typeof formSchema>;
+
+type LoginValues = z.infer<typeof loginSchema>;
+type RegisterValues = z.infer<typeof registerSchema>;
 type RegistrationStep = 'details' | 'face-enrollment';
 
 export function AuthForm() {
@@ -53,10 +62,18 @@ export function AuthForm() {
   const [activeTab, setActiveTab] = useState('login');
   const [isLoading, setIsLoading] = useState(false);
   const [registrationStep, setRegistrationStep] = useState<RegistrationStep>('details');
-  const [registrationData, setRegistrationData] = useState<FormValues | null>(null);
+  const [registrationData, setRegistrationData] = useState<RegisterValues | null>(null);
 
-  const form = useForm<FormValues>({
-    resolver: zodResolver(formSchema),
+  const loginForm = useForm<LoginValues>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: {
+      email: '',
+      password: '',
+    },
+  });
+
+  const registerForm = useForm<RegisterValues>({
+    resolver: zodResolver(registerSchema),
     defaultValues: {
       email: '',
       password: '',
@@ -64,7 +81,7 @@ export function AuthForm() {
     },
   });
 
-  const handleRegistrationDetailsSubmit = (data: FormValues) => {
+  const handleRegistrationDetailsSubmit = (data: RegisterValues) => {
     if (role === 'student') {
       setRegistrationData(data);
       setRegistrationStep('face-enrollment');
@@ -73,7 +90,7 @@ export function AuthForm() {
     }
   };
   
-  const completeRegistration = async (data: FormValues, faceDataUri?: string) => {
+  const completeRegistration = async (data: RegisterValues, faceDataUri?: string) => {
     setIsLoading(true);
     const { email, password, rollNo } = data;
     try {
@@ -104,7 +121,7 @@ export function AuthForm() {
       });
       setActiveTab('login');
       setRegistrationStep('details');
-      form.reset();
+      registerForm.reset();
     } catch (error: any) {
       console.error("Registration error:", error);
       toast({
@@ -148,7 +165,7 @@ export function AuthForm() {
   };
 
 
-  const handleLoginSubmit = async (data: FormValues) => {
+  const handleLoginSubmit = async (data: LoginValues) => {
     setIsLoading(true);
     const { email, password } = data;
     try {
@@ -172,7 +189,6 @@ export function AuthForm() {
         } else if (userRole === 'student') {
           router.push('/student-dashboard');
         } else {
-          // Fallback or error for unknown role
           throw new Error("Unknown user role.");
         }
       } else {
@@ -207,11 +223,11 @@ export function AuthForm() {
       );
     }
     return (
-       <Form {...form}>
-        <form onSubmit={form.handleSubmit(handleRegistrationDetailsSubmit)} className="space-y-6 pt-4">
+       <Form {...registerForm}>
+        <form onSubmit={registerForm.handleSubmit(handleRegistrationDetailsSubmit)} className="space-y-6 pt-4">
            {role === 'student' && (
               <FormField
-                control={form.control}
+                control={registerForm.control}
                 name="rollNo"
                 render={({ field }) => (
                   <FormItem>
@@ -228,7 +244,7 @@ export function AuthForm() {
               />
            )}
            <FormField
-            control={form.control}
+            control={registerForm.control}
             name="email"
             render={({ field }) => (
               <FormItem>
@@ -244,7 +260,7 @@ export function AuthForm() {
             )}
           />
            <FormField
-            control={form.control}
+            control={registerForm.control}
             name="password"
             render={({ field }) => (
               <FormItem>
@@ -281,16 +297,16 @@ export function AuthForm() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <Tabs value={activeTab} onValueChange={(tab) => { setActiveTab(tab); setRegistrationStep('details'); form.reset(); setIsLoading(false); }} className="w-full">
+        <Tabs value={activeTab} onValueChange={(tab) => { setActiveTab(tab); setRegistrationStep('details'); loginForm.reset(); registerForm.reset(); setIsLoading(false); }} className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="login" disabled={isLoading || (role === 'student' && registrationStep === 'face-enrollment')}>Login</TabsTrigger>
             <TabsTrigger value="register" disabled={isLoading}>Register</TabsTrigger>
           </TabsList>
           <TabsContent value="login">
-             <Form {...form}>
-              <form onSubmit={form.handleSubmit(handleLoginSubmit)} className="space-y-6 pt-4">
+             <Form {...loginForm}>
+              <form onSubmit={loginForm.handleSubmit(handleLoginSubmit)} className="space-y-6 pt-4">
                  <FormField
-                  control={form.control}
+                  control={loginForm.control}
                   name="email"
                   render={({ field }) => (
                     <FormItem>
@@ -306,7 +322,7 @@ export function AuthForm() {
                   )}
                 />
                  <FormField
-                  control={form.control}
+                  control={loginForm.control}
                   name="password"
                   render={({ field }) => (
                     <FormItem>
@@ -335,5 +351,3 @@ export function AuthForm() {
     </Card>
   );
 }
-
-    
