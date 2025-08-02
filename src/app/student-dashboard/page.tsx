@@ -8,7 +8,16 @@ import { useRouter } from 'next/navigation';
 import { LogOut, QrCode } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { UserCheck } from 'lucide-react';
-import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { QrScanner } from '@/components/student/qr-scanner';
+
 
 export default function StudentDashboard() {
   const router = useRouter();
@@ -17,13 +26,6 @@ export default function StudentDashboard() {
     // In a real app, you would clear the session/token here
     router.push('/');
   };
-
-  const handleScan = () => {
-    // In a real application, you would navigate to a dedicated scanner page.
-    // For this prototype, we'll assume the user scans the QR with their phone's camera,
-    // which opens the /attend page. This button is for guidance.
-    router.push('/attend'); 
-  }
 
   return (
     <div className="flex min-h-screen w-full flex-col">
@@ -52,15 +54,26 @@ export default function StudentDashboard() {
                             <QrCode className="h-6 w-6 text-primary"/>
                             Mark Attendance
                         </CardTitle>
-                        <CardDescription>Ready to check in for your lecture?</CardDescription>
+                        <CardDescription>Click the button below to open the QR code scanner.</CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <Alert>
-                            <AlertTitle>How to Mark Attendance</AlertTitle>
-                            <AlertDescription>
-                                Use your phone's camera to scan the QR code your professor is displaying. This will take you to the verification page to mark your attendance.
-                            </AlertDescription>
-                        </Alert>
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button className="w-full">
+                              <QrCode className="mr-2 h-4 w-4" />
+                              Scan Lecture QR Code
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="max-w-sm">
+                            <DialogHeader>
+                              <DialogTitle>Scan QR Code</DialogTitle>
+                              <DialogDescription>
+                                Position the QR code from the professor's screen inside the box.
+                              </DialogDescription>
+                            </DialogHeader>
+                            <QrScanner />
+                          </DialogContent>
+                        </Dialog>
                     </CardContent>
                 </Card>
             </div>
