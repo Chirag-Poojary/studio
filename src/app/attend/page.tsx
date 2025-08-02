@@ -30,6 +30,28 @@ function AttendanceProcessor() {
   const [errorMessage, setErrorMessage] = useState('');
   const [hasCameraPermission, setHasCameraPermission] = useState(true);
 
+  const startCamera = useCallback(async () => {
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      setProgress(25);
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        setHasCameraPermission(true);
+        if (videoRef.current) videoRef.current.srcObject = stream;
+        setStatus('camera_on');
+        setProgress(50);
+      } catch (error) {
+        console.error("Camera error:", error);
+        setHasCameraPermission(false);
+        setErrorMessage('Could not access camera. Please enable permissions in your browser settings.');
+        setStatus('error');
+        toast({ variant: 'destructive', title: 'Camera Error', description: 'Could not access camera. Please enable permissions.' });
+      }
+    } else {
+        setErrorMessage('Your browser does not support camera access.');
+        setStatus('error');
+    }
+  }, [toast]);
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
@@ -43,7 +65,7 @@ function AttendanceProcessor() {
             return;
           }
           setCurrentUser({ uid: user.uid, ...userData });
-          setStatus('idle');
+          startCamera();
         } else {
           setErrorMessage('Could not find your user profile.');
           setStatus('error');
@@ -54,7 +76,7 @@ function AttendanceProcessor() {
       }
     });
     return () => unsubscribe();
-  }, []);
+  }, [startCamera]);
 
   const stopCamera = useCallback(() => {
     if (videoRef.current && videoRef.current.srcObject) {
@@ -62,22 +84,6 @@ function AttendanceProcessor() {
       videoRef.current.srcObject = null;
     }
   }, []);
-
-  const startCamera = useCallback(async () => {
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      setProgress(25);
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        if (videoRef.current) videoRef.current.srcObject = stream;
-        setStatus('camera_on');
-        setHasCameraPermission(true);
-        setProgress(50);
-      } catch (error) {
-        setHasCameraPermission(false);
-        toast({ variant: 'destructive', title: 'Camera Error', description: 'Could not access camera. Please enable permissions.' });
-      }
-    }
-  }, [toast]);
   
   const takePictureAndVerify = useCallback(async () => {
     if (videoRef.current && canvasRef.current && currentUser) {
@@ -115,23 +121,28 @@ function AttendanceProcessor() {
                             checkInTime: new Date().toISOString()
                         };
                         
-                        // Check if student is already in the list to prevent duplicates
                         const sessionDoc = await getDoc(sessionDocRef);
-                        const attendedStudents = sessionDoc.data()?.attendedStudents || [];
-                        if (!attendedStudents.some((s: any) => s.uid === currentUser.uid)) {
-                           await updateDoc(sessionDocRef, { attendedStudents: arrayUnion(studentData) });
-                        }
+                        if(sessionDoc.exists()) {
+                            const attendedStudents = sessionDoc.data()?.attendedStudents || [];
+                            if (!attendedStudents.some((s: any) => s.uid === currentUser.uid)) {
+                               await updateDoc(sessionDocRef, { attendedStudents: arrayUnion(studentData) });
+                            }
 
-                        const userDocRef = doc(db, 'users', currentUser.uid);
-                        const sessionDetails = (await getDoc(sessionDocRef)).data();
-                        await updateDoc(userDocRef, {
-                          attendanceHistory: arrayUnion({
-                            sessionId,
-                            subject: sessionDetails?.subject || 'Unknown Subject',
-                            date: sessionDetails?.lectureDate || new Date().toISOString(),
-                            status: 'Present'
-                          })
-                        });
+                            const userDocRef = doc(db, 'users', currentUser.uid);
+                            const sessionDetails = sessionDoc.data();
+                             const userDoc = await getDoc(userDocRef);
+                             const userAttendanceHistory = userDoc.data()?.attendanceHistory || [];
+                             if(!userAttendanceHistory.some((h: any) => h.sessionId === sessionId)) {
+                                await updateDoc(userDocRef, {
+                                  attendanceHistory: arrayUnion({
+                                    sessionId,
+                                    subject: sessionDetails?.subject || 'Unknown Subject',
+                                    date: sessionDetails?.lectureDate || new Date().toISOString(),
+                                    status: 'Present'
+                                  })
+                                });
+                            }
+                        }
                     }
 
                 } else {
@@ -147,12 +158,6 @@ function AttendanceProcessor() {
         }
     }
   }, [stopCamera, toast, currentUser, sessionId]);
-
-  useEffect(() => {
-    if (status === 'idle') {
-      startCamera();
-    }
-  }, [status, startCamera]);
 
   useEffect(() => {
     return () => stopCamera();

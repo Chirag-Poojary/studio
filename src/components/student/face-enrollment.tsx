@@ -10,6 +10,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { auth, db } from '@/lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { enrollFace } from '@/ai/flows/enroll-face';
 
 type EnrollmentStatus = 'idle' | 'camera_on' | 'picture_taken' | 'enrolling' | 'enrolled' | 'enrollment_failed';
 
@@ -33,19 +34,21 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
     setIsClient(true);
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        setCurrentUser(user);
-        if (!isPartOfRegistration) {
-          const userDoc = await getDoc(doc(db, 'users', user.uid));
-          if (userDoc.exists() && userDoc.data().faceDataUri) {
+        const userDocRef = doc(db, 'users', user.uid);
+        const userDoc = await getDoc(userDocRef);
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          setCurrentUser({ uid: user.uid, ...userData });
+          if (userData.faceDataUri) {
             setStatus('enrolled');
-            setImageSrc(userDoc.data().faceDataUri);
+            setImageSrc(userData.faceDataUri);
             setHasEnrolledFace(true);
           }
         }
       }
     });
     return () => unsubscribe();
-  }, [isPartOfRegistration]);
+  }, []);
 
   const stopCamera = useCallback(() => {
     if (videoRef.current && videoRef.current.srcObject) {
@@ -99,12 +102,24 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
     if (!imageSrc) return;
     setStatus('enrolling');
 
+    // This case is for the initial registration flow
     if (isPartOfRegistration && onEnrollmentComplete) {
-      // The auth form will handle the AI check and user creation
-      onEnrollmentComplete(imageSrc);
-      setStatus('enrolled');
-    } else if (currentUser?.uid) {
+        onEnrollmentComplete(imageSrc);
+        return;
+    } 
+    
+    // This case is for re-enrollment from the dashboard
+    if (currentUser?.uid) {
         try {
+            const result = await enrollFace({
+                studentPhotoDataUri: imageSrc,
+                studentId: currentUser.rollNo || currentUser.uid,
+            });
+
+            if (!result.success) {
+                throw new Error(result.message || "AI verification failed. Please try again with a clear photo.");
+            }
+
             await updateDoc(doc(db, 'users', currentUser.uid), {
               faceDataUri: imageSrc
             });
@@ -114,13 +129,15 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
             });
             setStatus('enrolled');
             setHasEnrolledFace(true);
-        } catch (error) {
+
+        } catch (error: any) {
             console.error("Re-enrollment failed:", error);
             setStatus('enrollment_failed');
-             toast({
+            setEnrollmentMessage(error.message || "Could not save your new face data.");
+            toast({
                 variant: "destructive",
                 title: "Re-enrollment Failed",
-                description: "Could not save your new face data.",
+                description: error.message || "Could not save your new face data.",
             });
         }
     }
@@ -128,24 +145,20 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
 
   const reset = () => {
     setImageSrc(null);
-    setHasEnrolledFace(false);
-    startCamera();
+    setHasEnrolledFace(false); // Go back to enrollment view
+    setStatus('idle');
+    setEnrollmentMessage('');
+    startCamera(); // Immediately start the camera
   };
-
+  
+  // Effect to start camera on initial load for enrollment
   useEffect(() => {
-    if (isClient && !hasEnrolledFace && !isPartOfRegistration) {
+    if (isClient && !hasEnrolledFace) {
       startCamera();
     }
      // Cleanup camera on unmount
     return () => stopCamera();
-  }, [isClient, hasEnrolledFace, isPartOfRegistration, startCamera, stopCamera]);
-  
-  // Specific effect for registration flow to start camera
-  useEffect(() => {
-    if (isPartOfRegistration) {
-      startCamera();
-    }
-  }, [isPartOfRegistration, startCamera]);
+  }, [isClient, hasEnrolledFace, startCamera, stopCamera]);
 
 
   if (!isClient && !isPartOfRegistration) {
@@ -157,7 +170,7 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
     );
   }
   
-  if (hasEnrolledFace && !isPartOfRegistration && status === 'enrolled') {
+  if (status === 'enrolled' && !isPartOfRegistration) {
     return (
         <Card>
             <CardHeader>
@@ -213,9 +226,9 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
           {status === 'enrollment_failed' && <AlertTriangle className="w-16 h-16 text-destructive" />}
         </div>
         <canvas ref={canvasRef} className="hidden" />
-        {enrollmentMessage && (status === 'enrollment_failed' || status === 'enrolled') && (
-             <Alert variant={status === 'enrollment_failed' ? 'destructive' : 'default'} className="mt-4">
-                <AlertTitle>{status === 'enrollment_failed' ? 'Enrollment Failed' : 'Enrollment Note'}</AlertTitle>
+        {enrollmentMessage && (status === 'enrollment_failed') && (
+             <Alert variant={'destructive'} className="mt-4">
+                <AlertTitle>{'Enrollment Failed'}</AlertTitle>
                 <AlertDescription>{enrollmentMessage}</AlertDescription>
             </Alert>
         )}
@@ -227,7 +240,10 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
             <Button variant="outline" onClick={startCamera}>
               <RefreshCw className="mr-2 h-4 w-4" /> Retake
             </Button>
-            <Button onClick={handleEnrollment}>Enroll This Picture</Button>
+            <Button onClick={handleEnrollment} disabled={status === 'enrolling'}>
+             {status === 'enrolling' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+             Enroll This Picture
+            </Button>
           </div>
         )}
          {status === 'enrolling' && isPartOfRegistration && (

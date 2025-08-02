@@ -38,21 +38,11 @@ export default function StudentDashboard() {
                         </CardTitle>
                         <CardDescription>Welcome! Here you can view your attendance history and manage your biometric enrollment.</CardDescription>
                     </CardHeader>
-                </Card>
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <QrCode className="h-6 w-6 text-primary"/>
-                            Mark Attendance
-                        </CardTitle>
-                        <CardDescription>Scan the QR code provided by your professor to mark your attendance.</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <Button asChild className="w-full">
-                            <Link href="/attend?sessionId=scan">Scan QR Code</Link>
-                        </Button>
+                     <CardContent>
+                        <p className="text-sm text-muted-foreground">To mark your attendance, use your phone's camera to scan the QR code displayed by your professor. This will open the verification page in your browser.</p>
                     </CardContent>
                 </Card>
+                
                 <FaceEnrollment />
             </div>
 
