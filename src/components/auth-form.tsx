@@ -110,13 +110,18 @@ export function AuthForm() {
     setIsLoading(true);
     const { email, password } = data;
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+      
+      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      const userRole = userDoc.exists() ? userDoc.data().role : 'student';
+
       toast({
         title: 'Login Successful!',
         description: 'Redirecting to your dashboard...',
       });
       setTimeout(() => {
-        const dashboardUrl = role === 'professor' ? '/professor-dashboard' : '/student-dashboard';
+        const dashboardUrl = userRole === 'professor' ? '/professor-dashboard' : '/student-dashboard';
         router.push(dashboardUrl);
       }, 1000);
     } catch (error: any) {
@@ -197,7 +202,7 @@ export function AuthForm() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <Tabs value={activeTab} onValueChange={(tab) => { setActiveTab(tab); setRegistrationStep('details'); }} className="w-full">
+        <Tabs value={activeTab} onValueChange={(tab) => { setActiveTab(tab); setRegistrationStep('details'); form.reset() }} className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="login" disabled={isLoading}>Login</TabsTrigger>
             <TabsTrigger value="register" disabled={isLoading}>Register</TabsTrigger>

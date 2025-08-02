@@ -8,8 +8,9 @@ import { Camera, CheckCircle, Loader2, RefreshCw, UserCheck } from 'lucide-react
 import { useToast } from '@/hooks/use-toast';
 import { enrollFace } from '@/ai/flows/enroll-face';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { auth } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 
 type EnrollmentStatus = 'idle' | 'camera_on' | 'picture_taken' | 'enrolling' | 'enrolled';
 
@@ -19,7 +20,7 @@ type FaceEnrollmentProps = {
 };
 
 export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = false }: FaceEnrollmentProps) {
-  const [status, setStatus] = useState<EnrollmentStatus>(isPartOfRegistration ? 'idle' : 'idle');
+  const [status, setStatus] = useState<EnrollmentStatus>('idle');
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [isClient, setIsClient] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -29,20 +30,21 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
 
   useEffect(() => {
     setIsClient(true);
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-        if(user) {
-            setCurrentUser(user);
-             if (!isPartOfRegistration) {
-                const enrolled = localStorage.getItem(`faceEnrolled_${user.uid}`);
-                if (enrolled === 'true') {
-                    setStatus('enrolled');
-                    const storedImage = localStorage.getItem(`enrolledFaceDataUri_${user.uid}`);
-                    if(storedImage) setImageSrc(storedImage);
-                }
-            }
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        setCurrentUser(user);
+        if (!isPartOfRegistration) {
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          if (userDoc.exists() && userDoc.data().faceDataUri) {
+            setStatus('enrolled');
+            setImageSrc(userDoc.data().faceDataUri);
+          } else {
+            setStatus('idle');
+          }
         }
+      }
     });
-     return () => unsubscribe();
+    return () => unsubscribe();
   }, [isPartOfRegistration]);
 
   const stopCamera = useCallback(() => {
@@ -54,7 +56,7 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
   }, []);
 
   const startCamera = useCallback(async () => {
-    stopCamera(); // Ensure any existing stream is stopped
+    stopCamera(); 
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true });
@@ -102,18 +104,18 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
       });
 
       if (result.success) {
-        setStatus('enrolled');
         if (isPartOfRegistration && onEnrollmentComplete) {
             onEnrollmentComplete(imageSrc);
         } else {
-            // Use user-specific keys for local storage
-            localStorage.setItem(`faceEnrolled_${currentUser.uid}`, 'true');
-            localStorage.setItem(`enrolledFaceDataUri_${currentUser.uid}`, imageSrc);
-             toast({
+            await updateDoc(doc(db, 'users', currentUser.uid), {
+              faceDataUri: imageSrc
+            });
+            toast({
                 title: "Enrollment Successful!",
                 description: result.message,
             });
         }
+        setStatus('enrolled');
       } else {
         throw new Error(result.message);
       }
@@ -130,17 +132,16 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
 
   const reset = () => {
     setImageSrc(null);
-    setStatus('idle'); // This will trigger the useEffect to start camera
+    setStatus('idle');
+    startCamera();
   };
 
   useEffect(() => {
-    if (status === 'idle') {
+    if (status === 'idle' && isClient) {
       startCamera();
     }
-    // Cleanup camera on component unmount
     return () => stopCamera();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status]); // Only re-run when status changes to idle
+  }, [status, isClient, startCamera, stopCamera]);
 
   if (!isClient) {
     return (
@@ -177,7 +178,7 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
                 )}
             </CardContent>
              <CardFooter>
-                <Button variant="outline" onClick={() => setStatus('idle')}>
+                <Button variant="outline" onClick={reset}>
                     <RefreshCw className="mr-2 h-4 w-4" /> Re-enroll
                 </Button>
             </CardFooter>
