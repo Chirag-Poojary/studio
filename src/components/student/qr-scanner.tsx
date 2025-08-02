@@ -30,10 +30,12 @@ export function QrScanner() {
 
         const onScanSuccess = (decodedText: string) => {
             html5QrcodeScanner.clear().then(() => {
+                // The URL validation can be more robust in a real app
                 if (decodedText.includes('/attend?sessionId=')) {
                     router.push(decodedText);
                 } else {
                     console.warn("Scanned QR code is not a valid attendance link:", decodedText);
+                    // Optionally, show a toast message to the user about the invalid QR code
                 }
             }).catch(error => {
                 console.error("Failed to clear scanner.", error);
@@ -47,10 +49,12 @@ export function QrScanner() {
 
         html5QrcodeScanner.render(onScanSuccess, onScanFailure);
 
+        // Cleanup function to clear the scanner on component unmount
         return () => {
             html5QrcodeScanner.clear().catch(error => {
                 // This can fail if the component is unmounted before the scanner is ready.
                 // It's safe to ignore this error.
+                console.error("Failed to clear scanner on unmount:", error);
             });
         };
     }, [router]);
