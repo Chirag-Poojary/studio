@@ -19,7 +19,7 @@ type FaceEnrollmentProps = {
 };
 
 export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = false }: FaceEnrollmentProps) {
-  const [status, setStatus] = useState<EnrollmentStatus>('idle');
+  const [status, setStatus] = useState<EnrollmentStatus>(isPartOfRegistration ? 'idle' : 'idle');
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [isClient, setIsClient] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -45,7 +45,16 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
      return () => unsubscribe();
   }, [isPartOfRegistration]);
 
+  const stopCamera = useCallback(() => {
+    if (videoRef.current && videoRef.current.srcObject) {
+      const stream = videoRef.current.srcObject as MediaStream;
+      stream.getTracks().forEach(track => track.stop());
+      videoRef.current.srcObject = null;
+    }
+  }, []);
+
   const startCamera = useCallback(async () => {
+    stopCamera(); // Ensure any existing stream is stopped
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true });
@@ -60,17 +69,11 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
           title: "Camera Error",
           description: "Could not access your camera. Please check your browser permissions.",
         });
+        setStatus('idle');
       }
     }
-  }, [toast]);
+  }, [toast, stopCamera]);
 
-  const stopCamera = useCallback(() => {
-    if (videoRef.current && videoRef.current.srcObject) {
-      const stream = videoRef.current.srcObject as MediaStream;
-      stream.getTracks().forEach(track => track.stop());
-      videoRef.current.srcObject = null;
-    }
-  }, []);
 
   const takePicture = useCallback(() => {
     if (videoRef.current && canvasRef.current) {
@@ -127,16 +130,17 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
 
   const reset = () => {
     setImageSrc(null);
-    stopCamera();
-    if(status !== 'camera_on') startCamera();
+    setStatus('idle'); // This will trigger the useEffect to start camera
   };
 
   useEffect(() => {
-    if (status === 'idle' || isPartOfRegistration) {
+    if (status === 'idle') {
       startCamera();
     }
+    // Cleanup camera on component unmount
     return () => stopCamera();
-  }, [stopCamera, isPartOfRegistration, startCamera, status]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status]); // Only re-run when status changes to idle
 
   if (!isClient) {
     return (
@@ -172,6 +176,11 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
                     </div>
                 )}
             </CardContent>
+             <CardFooter>
+                <Button variant="outline" onClick={() => setStatus('idle')}>
+                    <RefreshCw className="mr-2 h-4 w-4" /> Re-enroll
+                </Button>
+            </CardFooter>
         </Card>
     );
   }
@@ -193,18 +202,13 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
         <div className="w-64 h-64 rounded-lg bg-secondary flex items-center justify-center overflow-hidden border">
           {status === 'camera_on' && <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover scale-x-[-1]" />}
           {imageSrc && <img src={imageSrc} alt="Student snapshot" className="w-full h-full object-cover  scale-x-[-1]" />}
-          {status === 'idle' && !isPartOfRegistration && <Camera className="w-16 h-16 text-muted-foreground" />}
+          {(status === 'idle' && !imageSrc) && <Loader2 className="w-16 h-16 text-muted-foreground animate-spin" />}
           {status === 'enrolling' && <Loader2 className="w-16 h-16 text-primary animate-spin" />}
           {status === 'enrolled' && isPartOfRegistration && <CheckCircle className="w-16 h-16 text-green-500" />}
         </div>
         <canvas ref={canvasRef} className="hidden" />
       </CardContent>
       <CardFooter className="flex justify-center gap-2">
-        {status === 'idle' && !isPartOfRegistration && (
-          <Button onClick={startCamera}>
-            <Camera className="mr-2 h-4 w-4" /> Start Camera
-          </Button>
-        )}
         {status === 'camera_on' && <Button onClick={takePicture}>Take Picture</Button>}
         {status === 'picture_taken' && (
           <>

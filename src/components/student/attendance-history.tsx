@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -6,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { auth, db } from '@/lib/firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { Skeleton } from '../ui/skeleton';
 
@@ -21,26 +22,31 @@ export function AttendanceHistory() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       if (user) {
         const userDocRef = doc(db, 'users', user.uid);
-        const userDoc = await getDoc(userDocRef);
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          const attendanceData = userData.attendanceHistory || [];
-          
-          const formattedHistory = attendanceData.map((item: any) => ({
-              subject: item.subject,
-              date: new Date(item.date).toLocaleDateString(),
-              status: item.status,
-          })).reverse(); // show most recent first
-          setHistory(formattedHistory);
-        }
+        const unsubscribeSnapshot = onSnapshot(userDocRef, (doc) => {
+          if (doc.exists()) {
+            const userData = doc.data();
+            const attendanceData = userData.attendanceHistory || [];
+            
+            const formattedHistory = attendanceData.map((item: any) => ({
+                subject: item.subject,
+                date: new Date(item.date).toLocaleDateString(),
+                status: item.status,
+            })).reverse(); // show most recent first
+            setHistory(formattedHistory);
+          }
+          setLoading(false);
+        });
+         return () => unsubscribeSnapshot();
+      } else {
+         setLoading(false);
+         setHistory([]);
       }
-      setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => unsubscribeAuth();
   }, []);
 
   return (
