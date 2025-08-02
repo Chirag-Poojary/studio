@@ -19,10 +19,10 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { Mail, Lock, Loader2, ArrowLeft } from 'lucide-react';
+import { Mail, Lock, Loader2, ArrowLeft, User, UserCheck } from 'lucide-react';
 import { auth, db } from '@/lib/firebase';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, getAuth, onAuthStateChanged } from 'firebase/auth';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { FaceEnrollment } from '@/components/student/face-enrollment';
 
 const formSchema = z.object({
@@ -55,12 +55,14 @@ export function AuthForm() {
   });
 
   const handleRegistrationSubmit = async (data: FormValues) => {
+    setIsLoading(true);
     if (role === 'student') {
       setRegistrationData(data);
       setRegistrationStep('face-enrollment');
     } else {
       await completeRegistration(data);
     }
+    setIsLoading(false);
   };
   
   const completeRegistration = async (data: FormValues, faceDataUri?: string) => {
@@ -110,20 +112,20 @@ export function AuthForm() {
     setIsLoading(true);
     const { email, password } = data;
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
+      await signInWithEmailAndPassword(auth, email, password);
       
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      const userDocRef = doc(db, 'users', auth.currentUser!.uid);
+      const userDoc = await getDoc(userDocRef);
       const userRole = userDoc.exists() ? userDoc.data().role : 'student';
 
       toast({
         title: 'Login Successful!',
         description: 'Redirecting to your dashboard...',
       });
-      setTimeout(() => {
-        const dashboardUrl = userRole === 'professor' ? '/professor-dashboard' : '/student-dashboard';
-        router.push(dashboardUrl);
-      }, 1000);
+
+      const dashboardUrl = userRole === 'professor' ? '/professor-dashboard' : '/student-dashboard';
+      router.push(dashboardUrl);
+
     } catch (error: any) {
       console.error("Login error:", error);
       toast({
@@ -131,8 +133,9 @@ export function AuthForm() {
         title: 'Login Failed',
         description: error.message || 'Invalid credentials or user not found.',
       });
+    } finally {
+        setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   const roleTitle = role.charAt(0).toUpperCase() + role.slice(1);
@@ -141,8 +144,8 @@ export function AuthForm() {
     if (role === 'student' && registrationStep === 'face-enrollment') {
       return (
         <div>
-           <Button variant="ghost" size="sm" onClick={() => setRegistrationStep('details')} className="mb-4">
-            <ArrowLeft className="mr-2" /> Back to Details
+           <Button variant="ghost" size="sm" onClick={() => { setRegistrationStep('details'); setIsLoading(false); }} className="mb-4">
+            <ArrowLeft className="mr-2 h-4 w-4" /> Back to Details
           </Button>
           <FaceEnrollment onEnrollmentComplete={handleFaceEnrolled} isPartOfRegistration={true} />
         </div>
@@ -194,7 +197,10 @@ export function AuthForm() {
   return (
     <Card className="w-full max-w-md">
       <CardHeader>
-        <CardTitle>{roleTitle} Portal</CardTitle>
+        <CardTitle className="flex items-center gap-2">
+            {role === 'student' ? <UserCheck /> : <User />}
+            {roleTitle} Portal
+        </CardTitle>
         <CardDescription>
           {activeTab === 'login' 
             ? 'Sign in to your account' 
@@ -202,10 +208,10 @@ export function AuthForm() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <Tabs value={activeTab} onValueChange={(tab) => { setActiveTab(tab); setRegistrationStep('details'); form.reset() }} className="w-full">
+        <Tabs value={activeTab} onValueChange={(tab) => { setActiveTab(tab); setRegistrationStep('details'); form.reset(); setIsLoading(false); }} className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="login" disabled={isLoading}>Login</TabsTrigger>
-            <TabsTrigger value="register" disabled={isLoading}>Register</TabsTrigger>
+            <TabsTrigger value="register" disabled={isLoading || (role === 'student' && registrationStep === 'face-enrollment')}>Register</TabsTrigger>
           </TabsList>
           <TabsContent value="login">
              <Form {...form}>

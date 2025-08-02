@@ -4,7 +4,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Camera, CheckCircle, Loader2, RefreshCw, UserCheck } from 'lucide-react';
+import { Camera, CheckCircle, Loader2, RefreshCw, UserCheck, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { enrollFace } from '@/ai/flows/enroll-face';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -12,7 +12,7 @@ import { auth, db } from '@/lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 
-type EnrollmentStatus = 'idle' | 'camera_on' | 'picture_taken' | 'enrolling' | 'enrolled';
+type EnrollmentStatus = 'idle' | 'camera_on' | 'picture_taken' | 'enrolling' | 'enrolled' | 'enrollment_failed';
 
 type FaceEnrollmentProps = {
   onEnrollmentComplete?: (faceDataUri: string) => void;
@@ -27,6 +27,7 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { toast } = useToast();
+  const [enrollmentMessage, setEnrollmentMessage] = useState('');
 
   useEffect(() => {
     setIsClient(true);
@@ -42,6 +43,11 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
             setStatus('idle');
           }
         }
+      } else {
+         if (isPartOfRegistration) {
+            // For registration, we create a temporary user object for the AI flow
+            setCurrentUser({ uid: `temp-id-${Date.now()}` });
+         }
       }
     });
     return () => unsubscribe();
@@ -104,15 +110,15 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
       });
 
       if (result.success) {
-        // If part of registration, pass data URI to parent.
+        setEnrollmentMessage(result.message);
+        setStatus('enrolled');
         if (isPartOfRegistration && onEnrollmentComplete) {
             onEnrollmentComplete(imageSrc);
              toast({
                 title: "Enrollment Successful!",
                 description: "Completing your registration...",
             });
-        // If on dashboard, update the user doc directly.
-        } else if (!isPartOfRegistration) {
+        } else if (!isPartOfRegistration && currentUser.uid) { // Ensure there is a real user
             await updateDoc(doc(db, 'users', currentUser.uid), {
               faceDataUri: imageSrc
             });
@@ -121,17 +127,18 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
                 description: result.message,
             });
         }
-        setStatus('enrolled');
       } else {
-        throw new Error(result.message);
+        throw new Error(result.message || "The AI model could not verify a clear face in the photo. Please try again.");
       }
     } catch (error) {
       console.error("Enrollment failed:", error);
-      setStatus('picture_taken');
+      const errorMessage = error instanceof Error ? error.message : "An unknown error occurred. Please try again.";
+      setEnrollmentMessage(errorMessage);
+      setStatus('enrollment_failed');
       toast({
         variant: "destructive",
         title: "Enrollment Failed",
-        description: error instanceof Error ? error.message : "An unknown error occurred. Please try again.",
+        description: errorMessage,
       });
     }
   };
@@ -139,6 +146,7 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
   const reset = () => {
     setImageSrc(null);
     setStatus('idle');
+    setEnrollmentMessage('');
     if (!videoRef.current?.srcObject) {
        startCamera();
     }
@@ -148,7 +156,12 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
     if (status === 'idle' && isClient && !videoRef.current?.srcObject) {
       startCamera();
     }
-    return () => stopCamera();
+    // Only stop camera if it's not needed anymore
+    return () => {
+        if(status !== 'camera_on' && status !== 'picture_taken') {
+            stopCamera();
+        }
+    }
   }, [status, isClient, startCamera, stopCamera]);
 
   if (!isClient) {
@@ -214,18 +227,25 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
           {(status === 'idle' && !imageSrc) && <Loader2 className="w-16 h-16 text-muted-foreground animate-spin" />}
           {status === 'enrolling' && <Loader2 className="w-16 h-16 text-primary animate-spin" />}
           {status === 'enrolled' && isPartOfRegistration && <CheckCircle className="w-16 h-16 text-green-500" />}
+          {status === 'enrollment_failed' && <AlertTriangle className="w-16 h-16 text-destructive" />}
         </div>
         <canvas ref={canvasRef} className="hidden" />
+        {enrollmentMessage && (status === 'enrollment_failed' || status === 'enrolled') && (
+             <Alert variant={status === 'enrollment_failed' ? 'destructive' : 'default'} className="mt-4">
+                <AlertTitle>{status === 'enrollment_failed' ? 'Enrollment Failed' : 'Enrollment Note'}</AlertTitle>
+                <AlertDescription>{enrollmentMessage}</AlertDescription>
+            </Alert>
+        )}
       </CardContent>
-      <CardFooter className="flex justify-center gap-2">
+      <CardFooter className="flex flex-col items-center justify-center gap-2">
         {status === 'camera_on' && <Button onClick={takePicture}>Take Picture</Button>}
-        {status === 'picture_taken' && (
-          <>
+        {(status === 'picture_taken' || status === 'enrollment_failed') && (
+          <div className="flex justify-center gap-2">
             <Button variant="outline" onClick={reset}>
               <RefreshCw className="mr-2 h-4 w-4" /> Retake
             </Button>
             <Button onClick={handleEnrollment}>Enroll This Picture</Button>
-          </>
+          </div>
         )}
          {status === 'enrolling' && (
           <Button disabled>
