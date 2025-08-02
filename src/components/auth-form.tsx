@@ -35,7 +35,7 @@ const formSchema = z.object({
   rollNo: z.string().min(1, { message: "Roll number is required."}).optional(),
 }).refine(data => {
     // make rollNo required for students
-    const role = new URLSearchParams(window.location.search).get('role') || 'student';
+    const role = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '').get('role') || 'student';
     return role !== 'student' || (data.rollNo && data.rollNo.length > 0);
 }, {
     message: "Roll number is required for students.",
@@ -129,7 +129,7 @@ export function AuthForm() {
           try {
               const result = await enrollFace({
                   studentPhotoDataUri: faceDataUri,
-                  studentId: `temp-id-${Date.now()}` // Use a temporary ID for the check
+                  studentId: registrationData.rollNo || `temp-id-${Date.now()}` // Use roll no or temp id
               });
 
               if (result.success) {
@@ -154,26 +154,30 @@ export function AuthForm() {
     setIsLoading(true);
     const { email, password } = data;
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
       
-      const userDocRef = doc(db, 'users', auth.currentUser!.uid);
+      const userDocRef = doc(db, 'users', userCredential.user.uid);
       const userDoc = await getDoc(userDocRef);
-      const userRole = userDoc.exists() ? userDoc.data().role : 'student';
 
-      toast({
-        title: 'Login Successful!',
-        description: 'Redirecting to your dashboard...',
-      });
+      if (userDoc.exists()) {
+        const userRole = userDoc.data().role;
+         toast({
+          title: 'Login Successful!',
+          description: 'Redirecting to your dashboard...',
+        });
 
-      const dashboardUrl = userRole === 'professor' ? '/professor-dashboard' : '/student-dashboard';
-      router.push(dashboardUrl);
+        const dashboardUrl = userRole === 'professor' ? '/professor-dashboard' : '/student-dashboard';
+        router.push(dashboardUrl);
+      } else {
+         throw new Error("User role not found in database.");
+      }
 
     } catch (error: any) {
       console.error("Login error:", error);
       toast({
         variant: 'destructive',
         title: 'Login Failed',
-        description: error.code === 'auth/invalid-credential' ? 'Invalid email or password.' : 'An error occurred.',
+        description: error.code === 'auth/invalid-credential' ? 'Invalid email or password.' : 'An error occurred during login.',
       });
     } finally {
         setIsLoading(false);
