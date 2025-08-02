@@ -5,10 +5,11 @@ import { DashboardHeader } from '@/components/dashboard-header';
 import { AttendanceHistory } from '@/components/student/attendance-history';
 import { Button } from '@/components/ui/button';
 import { useRouter } from 'next/navigation';
-import { LogOut } from 'lucide-react';
+import { LogOut, QrCode } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { UserCheck } from 'lucide-react';
 import { FaceEnrollment } from '@/components/student/face-enrollment';
+import Link from 'next/link';
 
 export default function StudentDashboard() {
   const router = useRouter();
@@ -37,6 +38,20 @@ export default function StudentDashboard() {
                         </CardTitle>
                         <CardDescription>Welcome! Here you can view your attendance history and manage your biometric enrollment.</CardDescription>
                     </CardHeader>
+                </Card>
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <QrCode className="h-6 w-6 text-primary"/>
+                            Mark Attendance
+                        </CardTitle>
+                        <CardDescription>Scan the QR code provided by your professor to mark your attendance.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <Button asChild className="w-full">
+                            <Link href="/attend?sessionId=scan">Scan QR Code</Link>
+                        </Button>
+                    </CardContent>
                 </Card>
                 <FaceEnrollment />
             </div>
