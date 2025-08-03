@@ -20,7 +20,7 @@ type FaceEnrollmentProps = {
 };
 
 export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = false }: FaceEnrollmentProps) {
-  const [status, setStatus] = useState<EnrollmentStatus>(isPartOfRegistration ? 'camera_loading' : 'idle');
+  const [status, setStatus] = useState<EnrollmentStatus>('idle');
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -66,43 +66,40 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
     }
   }, [toast]);
   
-  // Effect for non-registration flow (dashboard)
   useEffect(() => {
-    if (isPartOfRegistration || !isClient) return;
-
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        const userDocRef = doc(db, 'users', user.uid);
-        const userDoc = await getDoc(userDocRef);
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          setCurrentUser({ uid: user.uid, ...userData });
-          if (userData.faceDataUri) {
-            setHasEnrolledFace(true);
-            setStatus('enrolled');
-            setImageSrc(userData.faceDataUri);
-          } else {
-            // User is logged in but hasn't enrolled, start camera
-            startCamera();
+    if (!isClient) return;
+  
+    if (isPartOfRegistration) {
+      startCamera();
+    } else {
+      const unsubscribe = onAuthStateChanged(auth, async (user) => {
+        if (user) {
+          const userDocRef = doc(db, 'users', user.uid);
+          const userDoc = await getDoc(userDocRef);
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            setCurrentUser({ uid: user.uid, ...userData });
+            if (userData.faceDataUri) {
+              setHasEnrolledFace(true);
+              setStatus('enrolled');
+              setImageSrc(userData.faceDataUri);
+            } else {
+              startCamera();
+            }
           }
         }
-      }
-    });
-    return () => unsubscribe();
-  }, [isPartOfRegistration, isClient, startCamera]);
-
-  // Effect for registration flow
-  useEffect(() => {
-    if (isPartOfRegistration && isClient) {
-      startCamera();
+      });
+      return () => unsubscribe();
     }
-    // Clean up camera on unmount
+  
+    // Cleanup camera on unmount for registration flow
     return () => {
       if (isPartOfRegistration) {
         stopCamera();
       }
     };
-  }, [isPartOfRegistration, isClient, startCamera, stopCamera]);
+  }, [isClient, isPartOfRegistration, startCamera, stopCamera]);
+
 
   const takePicture = useCallback(() => {
     if (videoRef.current && canvasRef.current) {
@@ -239,7 +236,7 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
         <div className="w-64 h-64 rounded-lg bg-secondary flex items-center justify-center overflow-hidden border">
           {status === 'camera_on' && <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />}
           {imageSrc && <img src={imageSrc} alt="Student snapshot" className="w-full h-full object-cover" />}
-          {(status === 'camera_loading' || status === 'enrolling') && <Loader2 className="w-16 h-16 text-muted-foreground animate-spin" />}
+          {(status === 'camera_loading' || status === 'enrolling' || status === 'idle') && <Loader2 className="w-16 h-16 text-muted-foreground animate-spin" />}
           {status === 'no_camera' && <AlertTriangle className="w-16 h-16 text-destructive" />}
           {status === 'enrollment_failed' && <AlertTriangle className="w-16 h-16 text-destructive" />}
         </div>
