@@ -5,7 +5,7 @@ import { DashboardHeader } from '@/components/dashboard-header';
 import { AttendanceHistory } from '@/components/student/attendance-history';
 import { Button } from '@/components/ui/button';
 import { useRouter } from 'next/navigation';
-import { LogOut, QrCode } from 'lucide-react';
+import { LogOut, QrCode, ScanLine } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { UserCheck } from 'lucide-react';
 import {
@@ -55,18 +55,20 @@ export default function StudentDashboard() {
                 </Card>
                 
                 <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <QrCode className="h-6 w-6 text-primary"/>
-                            Mark Attendance
-                        </CardTitle>
-                        <CardDescription>Click the button below to open the QR code scanner.</CardDescription>
+                    <CardHeader className="flex flex-row items-center gap-4 space-y-0">
+                        <div className="p-3 rounded-full bg-primary/10 border border-primary/20">
+                            <ScanLine className="h-8 w-8 text-primary" />
+                        </div>
+                        <div className="flex-1">
+                            <CardTitle>Mark Your Attendance</CardTitle>
+                            <CardDescription>Scan the QR code displayed by your professor.</CardDescription>
+                        </div>
                     </CardHeader>
                     <CardContent>
                         <Dialog>
                           <DialogTrigger asChild>
-                            <Button className="w-full">
-                              <QrCode className="mr-2 h-4 w-4" />
+                            <Button size="lg" className="w-full font-semibold">
+                              <QrCode className="mr-2 h-5 w-5" />
                               Scan Lecture QR Code
                             </Button>
                           </DialogTrigger>
