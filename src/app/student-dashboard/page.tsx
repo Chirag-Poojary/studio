@@ -16,7 +16,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { QrScanner } from '@/components/student/qr-scanner';
+import dynamic from 'next/dynamic';
+import { Loader2 } from 'lucide-react';
+
+const QrScanner = dynamic(() => import('@/components/student/qr-scanner').then(mod => mod.QrScanner), {
+  ssr: false,
+  loading: () => <div className="flex items-center justify-center h-48"><Loader2 className="h-8 w-8 animate-spin" /></div>
+});
 
 
 export default function StudentDashboard() {
