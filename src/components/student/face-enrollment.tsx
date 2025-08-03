@@ -69,34 +69,33 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
   useEffect(() => {
     if (!isClient) return;
   
+    const handleUser = async (user: any) => {
+      if (user) {
+        const userDocRef = doc(db, 'users', user.uid);
+        const userDoc = await getDoc(userDocRef);
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          setCurrentUser({ uid: user.uid, ...userData });
+          if (userData.faceDataUri) {
+            setHasEnrolledFace(true);
+            setStatus('enrolled');
+            setImageSrc(userData.faceDataUri);
+          } else {
+            startCamera();
+          }
+        }
+      }
+    };
+  
     if (isPartOfRegistration) {
       startCamera();
     } else {
-      const unsubscribe = onAuthStateChanged(auth, async (user) => {
-        if (user) {
-          const userDocRef = doc(db, 'users', user.uid);
-          const userDoc = await getDoc(userDocRef);
-          if (userDoc.exists()) {
-            const userData = userDoc.data();
-            setCurrentUser({ uid: user.uid, ...userData });
-            if (userData.faceDataUri) {
-              setHasEnrolledFace(true);
-              setStatus('enrolled');
-              setImageSrc(userData.faceDataUri);
-            } else {
-              startCamera();
-            }
-          }
-        }
-      });
+      const unsubscribe = onAuthStateChanged(auth, handleUser);
       return () => unsubscribe();
     }
   
-    // Cleanup camera on unmount for registration flow
     return () => {
-      if (isPartOfRegistration) {
-        stopCamera();
-      }
+      stopCamera();
     };
   }, [isClient, isPartOfRegistration, startCamera, stopCamera]);
 

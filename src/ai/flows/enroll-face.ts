@@ -38,10 +38,11 @@ const prompt = ai.definePrompt({
 
 You will receive a photo of the student's face and the student's ID.
 
-You will determine if the face enrollment was successful and provide a message indicating the result.
+You will determine if the photo contains a clear, single, human face. If it does, the enrollment is successful.
 
 Considerations:
 - Check if the photo is clear and the face is visible.
+- If no face is detected or the image is blurry, enrollment should fail.
 - Ensure that the student ID is valid.
 
 Input:
@@ -49,7 +50,27 @@ Student ID: {{{studentId}}}
 Student Photo: {{media url=studentPhotoDataUri}}
 
 Output:
-Indicate whether the face enrollment was successful or not and provide a message.`,  
+Indicate whether the face enrollment was successful or not and provide a message.`,
+  config: {
+    safetySettings: [
+      {
+        category: 'HARM_CATEGORY_DANGEROUS_CONTENT',
+        threshold: 'BLOCK_NONE',
+      },
+       {
+        category: 'HARM_CATEGORY_HARASSMENT',
+        threshold: 'BLOCK_NONE',
+      },
+       {
+        category: 'HARM_CATEGORY_HATE_SPEECH',
+        threshold: 'BLOCK_NONE',
+      },
+       {
+        category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
+        threshold: 'BLOCK_NONE',
+      },
+    ],
+  },
 });
 
 const enrollFaceFlow = ai.defineFlow(
