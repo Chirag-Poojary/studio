@@ -112,7 +112,7 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
         context.translate(video.videoWidth, 0);
         context.scale(-1, 1);
         context.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
-        const dataUrl = canvas.toDataURL('image/jpeg');
+        const dataUrl = canvas.toDataURL('image/png');
         setImageSrc(dataUrl);
         setStatus('picture_taken');
         stopCamera();
