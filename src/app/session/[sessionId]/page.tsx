@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
@@ -30,6 +31,7 @@ export default function SessionPage() {
   const [qrCodeUrl, setQrCodeUrl] = useState('');
   const [isClient, setIsClient] = useState(false);
   const [totalStudents, setTotalStudents] = useState(0); 
+  const [formattedDate, setFormattedDate] = useState('N/A');
 
   const lectureDetails = useMemo(() => {
     return {
@@ -37,7 +39,6 @@ export default function SessionPage() {
       year: searchParams.get('year') || 'N/A',
       division: searchParams.get('division') || 'N/A',
       subject: searchParams.get('subject') || 'N/A',
-      lectureDate: searchParams.get('lectureDate') ? new Date(searchParams.get('lectureDate')!).toLocaleDateString() : 'N/A',
       lectureTime: searchParams.get('lectureTime') || 'N/A',
     };
   }, [searchParams]);
@@ -46,7 +47,13 @@ export default function SessionPage() {
     setIsClient(true);
     const urlToEncode = `${window.location.origin}/attend?sessionId=${sessionId}`;
     setQrCodeUrl(`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(urlToEncode)}`);
-  }, [sessionId]);
+    
+    const lectureDateString = searchParams.get('lectureDate');
+    if (lectureDateString) {
+      setFormattedDate(new Date(lectureDateString).toLocaleDateString());
+    }
+
+  }, [sessionId, searchParams]);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -85,7 +92,7 @@ export default function SessionPage() {
                 </CardDescription>
                  <div className="flex items-center text-sm text-muted-foreground pt-2">
                     <Clock className="mr-2 h-4 w-4" />
-                    <span>{lectureDetails.lectureDate} at {lectureDetails.lectureTime}</span>
+                    <span>{formattedDate} at {lectureDetails.lectureTime}</span>
                 </div>
               </CardHeader>
               <CardContent>
