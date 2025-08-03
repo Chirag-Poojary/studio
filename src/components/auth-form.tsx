@@ -40,10 +40,9 @@ const registerSchema = z.object({
     { message: 'Please use your college-provided Outlook ID (e.g., name@vit.edu.in).' }
   ),
   password: z.string().min(8, { message: 'Password must be at least 8 characters long.' }),
-  rollNo: z.string().min(1, { message: 'Roll number is required.' }),
+  rollNo: z.string().optional(),
 }).refine(data => {
     const role = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '').get('role') || 'student';
-    // Only require rollNo if the role is student.
     return role !== 'student' || (data.rollNo && data.rollNo.length > 0);
 }, {
     message: "Roll number is required for students.",
