@@ -13,7 +13,7 @@ import { Clock, Users, XCircle, CheckCircle, Hourglass, RefreshCw } from 'lucide
 import { Skeleton } from '@/components/ui/skeleton';
 import { DashboardHeader } from '@/components/dashboard-header';
 import { db } from '@/lib/firebase';
-import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
+import { doc, onSnapshot, updateDoc, getDoc } from 'firebase/firestore';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 
 type Student = {
@@ -67,48 +67,46 @@ export default function SessionPage() {
     }
   }, [searchParams]);
   
-  useEffect(() => {
+   useEffect(() => {
     if (!sessionId) return;
-    
     const sessionDocRef = doc(db, 'sessions', sessionId);
-    
-    // Firestore listener
-    const unsubscribe = onSnapshot(sessionDocRef, (doc) => {
-        if (doc.exists()) {
-            const data = doc.data() as SessionData;
-            const previousToken = sessionData?.qrToken;
-            setSessionData(data);
-            
-            // Update QR and reset countdown only if token has changed
-            if (data.qrToken && data.qrToken !== previousToken) {
-              updateQrCode(data.qrToken);
-              setCountdown(20);
-            } else if (!previousToken && data.qrToken) { // For initial load
-              updateQrCode(data.qrToken);
-            }
+
+    // Firestore listener for real-time updates
+    const unsubscribe = onSnapshot(sessionDocRef, (docSnapshot) => {
+      if (docSnapshot.exists()) {
+        const data = docSnapshot.data() as SessionData;
+        const previousToken = sessionData?.qrToken;
+        setSessionData(data);
+        
+        // Update QR and reset countdown only if the token has actually changed
+        if (data.qrToken && data.qrToken !== previousToken) {
+          updateQrCode(data.qrToken);
+          setCountdown(20);
+        } else if (!previousToken && data.qrToken) { // Handle initial load
+          updateQrCode(data.qrToken);
         }
+      }
     });
 
-    // Interval to update the token in the database (master clock)
-    const rotationIntervalId = setInterval(() => {
-      // We check 'active' status from a fresh state read inside interval
-      // to avoid stale closures, though onSnapshot should keep sessionData fresh.
-      if (sessionData?.active) {
-        const newQrToken = Date.now().toString();
-        updateDoc(sessionDocRef, { qrToken: newQrToken });
-      }
-    }, 20000); // 20 seconds
+    // Master timer to update the QR token in the database every 20 seconds
+    const rotationIntervalId = setInterval(async () => {
+        const docSnap = await getDoc(sessionDocRef);
+        if (docSnap.exists() && docSnap.data().active) {
+            const newQrToken = Date.now().toString();
+            await updateDoc(sessionDocRef, { qrToken: newQrToken });
+        }
+    }, 20000);
 
-    // Interval for UI countdown
+    // UI countdown timer
     const countdownIntervalId = setInterval(() => {
-        setCountdown(prev => (prev > 1 ? prev - 1 : 0));
+      setCountdown(prev => (prev > 0 ? prev - 1 : 20)); // Reset to 20 if it reaches 0
     }, 1000);
 
     return () => {
-        unsubscribe();
-        clearInterval(rotationIntervalId);
-        clearInterval(countdownIntervalId);
-    }
+      unsubscribe();
+      clearInterval(rotationIntervalId);
+      clearInterval(countdownIntervalId);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, updateQrCode]);
 
@@ -263,3 +261,5 @@ export default function SessionPage() {
     </div>
   );
 }
+
+    
