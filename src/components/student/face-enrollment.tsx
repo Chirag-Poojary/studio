@@ -28,12 +28,8 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
   const { toast } = useToast();
   const [enrollmentMessage, setEnrollmentMessage] = useState('');
   const [hasEnrolledFace, setHasEnrolledFace] = useState(false);
-  const [isClient, setIsClient] = useState(false);
-  const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
+  const [hasCameraPermission, setHasCameraPermission] = useState(false);
 
-   useEffect(() => {
-    setIsClient(true);
-  }, []);
 
   const stopCamera = useCallback(() => {
     if (videoRef.current && videoRef.current.srcObject) {
@@ -42,7 +38,7 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
       videoRef.current.srcObject = null;
     }
   }, []);
-
+  
   const startCamera = useCallback(async () => {
     setStatus('camera_loading');
     setImageSrc(null);
@@ -71,8 +67,6 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
   }, [toast]);
   
   useEffect(() => {
-    if (!isClient) return;
-  
     const handleUser = async (user: any) => {
       if (user) {
         const userDocRef = doc(db, 'users', user.uid);
@@ -101,7 +95,7 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
     return () => {
       stopCamera();
     };
-  }, [isClient, isPartOfRegistration, startCamera, stopCamera]);
+  }, [isPartOfRegistration, startCamera, stopCamera]);
 
 
   const takePicture = useCallback(() => {
@@ -112,7 +106,6 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
       canvas.height = video.videoHeight;
       const context = canvas.getContext('2d');
       if (context) {
-        // Flip the image horizontally for a mirror effect
         context.translate(video.videoWidth, 0);
         context.scale(-1, 1);
         context.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
@@ -128,15 +121,11 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
     if (!imageSrc) return;
     setStatus('enrolling');
 
-    // This case is for the initial registration flow
     if (isPartOfRegistration && onEnrollmentComplete) {
-        // The onEnrollmentComplete will handle AI check and user creation
         onEnrollmentComplete(imageSrc); 
-        // We don't set status to 'enrolled' here, auth-form will handle redirection
         return;
     } 
     
-    // This case is for re-enrollment from the dashboard
     if (currentUser?.uid) {
         try {
             const result = await enrollFace({
@@ -176,17 +165,8 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
     setHasEnrolledFace(false);
     setStatus('idle');
     setEnrollmentMessage('');
-    startCamera(); // Immediately start the camera
+    startCamera();
   };
-
-  if (!isClient && !isPartOfRegistration) {
-    return (
-        <Card>
-            <CardHeader><CardTitle>Face Biometrics</CardTitle></CardHeader>
-            <CardContent><div className="flex items-center justify-center h-48"><Loader2 className="h-8 w-8 animate-spin" /></div></CardContent>
-        </Card>
-    );
-  }
   
   if (status === 'enrolled' && !isPartOfRegistration) {
     return (
@@ -237,8 +217,8 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
       )}
       <CardContent className="flex flex-col items-center justify-center">
         <div className="w-64 h-64 rounded-lg bg-secondary flex items-center justify-center overflow-hidden border">
-          {status === 'camera_on' && <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />}
-          {imageSrc && <img src={imageSrc} alt="Student snapshot" className="w-full h-full object-cover" />}
+          {(status === 'camera_on' || status === 'picture_taken') && <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" style={{ display: status === 'camera_on' ? 'block' : 'none' }} />}
+          {imageSrc && <img src={imageSrc} alt="Student snapshot" className="w-full h-full object-cover" style={{ display: imageSrc ? 'block' : 'none' }}/>}
           {(status === 'camera_loading' || status === 'enrolling' || status === 'idle') && <Loader2 className="w-16 h-16 text-muted-foreground animate-spin" />}
           {status === 'no_camera' && <AlertTriangle className="w-16 h-16 text-destructive" />}
           {status === 'enrollment_failed' && <AlertTriangle className="w-16 h-16 text-destructive" />}
