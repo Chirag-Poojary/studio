@@ -41,6 +41,7 @@ export default function SessionPage() {
   const [formattedDate, setFormattedDate] = useState('N/A');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [qrToken, setQrToken] = useState('');
+  const [countdown, setCountdown] = useState(20);
 
   const lectureDetails = useMemo(() => {
     return {
@@ -73,12 +74,13 @@ export default function SessionPage() {
     const sessionDocRef = doc(db, 'sessions', sessionId);
     
     // Set up QR code rotation
-    const intervalId = setInterval(async () => {
+    const rotationIntervalId = setInterval(async () => {
         if (sessionData?.active) {
             const newQrToken = Date.now().toString();
             await updateDoc(sessionDocRef, { qrToken: newQrToken });
+            setCountdown(20);
         }
-    }, 10000); // 10 seconds
+    }, 20000); // 20 seconds
 
     // Set up Firestore listener
     const unsubscribe = onSnapshot(sessionDocRef, (doc) => {
@@ -91,10 +93,16 @@ export default function SessionPage() {
             }
         }
     });
+    
+    // Set up countdown timer
+    const countdownIntervalId = setInterval(() => {
+        setCountdown(prev => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
 
     return () => {
         unsubscribe();
-        clearInterval(intervalId);
+        clearInterval(rotationIntervalId);
+        clearInterval(countdownIntervalId);
     }
   }, [sessionId, sessionData?.active, updateQrCode]);
 
@@ -207,7 +215,7 @@ export default function SessionPage() {
               <CardHeader>
                 <CardTitle>Scan to Attend</CardTitle>
                  <CardDescription>
-                  {sessionActive ? "Code refreshes every 10s" : "This code is now inactive."}
+                   {sessionActive ? `Code refreshing in ${countdown}s` : "This code is now inactive."}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -222,7 +230,7 @@ export default function SessionPage() {
                     />
                     {sessionActive && (
                         <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 text-white opacity-0 hover:opacity-100 transition-opacity rounded-lg">
-                           <RefreshCw className="h-8 w-8 animate-spin" style={{ animationDuration: '10s' }}/>
+                           <RefreshCw className="h-8 w-8 animate-spin" style={{ animationDuration: '20s' }}/>
                            <p className="ml-2 font-semibold">Rotating QR Code</p>
                         </div>
                     )}
