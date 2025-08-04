@@ -117,7 +117,7 @@ function AttendanceProcessor() {
     const getCameraPermission = async () => {
         if (status === 'camera_loading') {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
                 setHasCameraPermission(true);
                 if (videoRef.current) {
                     videoRef.current.srcObject = stream;
@@ -273,7 +273,7 @@ function AttendanceProcessor() {
           <CardDescription>Session ID: {sessionId || 'Loading...'}</CardDescription>
         </CardHeader>
         <CardContent className="min-h-[400px] flex flex-col items-center justify-center space-y-4">
-            <div className={`w-full max-w-sm aspect-square rounded-full bg-secondary mx-auto flex items-center justify-center overflow-hidden border-4 border-primary`}>
+            <div className={`w-full max-w-sm aspect-square rounded-full bg-secondary mx-auto flex items-center justify-center overflow-hidden border-4 border-primary ${!showVideo && 'p-4'}`}>
                  {/* Always render the video tag to ensure ref is available */}
                 <video ref={videoRef} autoPlay playsInline muted className={`w-full h-full object-cover scale-x-[-1] ${!showVideo && 'hidden'}`} />
                  {/* Show a placeholder when video is not active */}
@@ -288,9 +288,7 @@ function AttendanceProcessor() {
                  </Alert>
             )}
              {/* Render content outside the video circle only when video is not supposed to be shown */}
-             {!showVideo && <div className="pt-4">{renderContent()}</div>}
-             {/* Render camera_on content below the video circle */}
-             {status === 'camera_on' && <div className="pt-4">{renderContent()}</div>}
+             {showVideo && <div className="pt-4">{renderContent()}</div>}
 
         </CardContent>
         <CardFooter className="flex flex-col">
@@ -309,3 +307,5 @@ export default function AttendPage() {
         </Suspense>
     )
 }
+
+    
