@@ -28,8 +28,7 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
   const { toast } = useToast();
   const [enrollmentMessage, setEnrollmentMessage] = useState('');
   const [hasEnrolledFace, setHasEnrolledFace] = useState(false);
-  const [hasCameraPermission, setHasCameraPermission] = useState(false);
-
+  const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
 
   const stopCamera = useCallback(() => {
     if (videoRef.current && videoRef.current.srcObject) {
@@ -38,10 +37,11 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
       videoRef.current.srcObject = null;
     }
   }, []);
-  
+
   const startCamera = useCallback(async () => {
     setStatus('camera_loading');
     setImageSrc(null);
+    setEnrollmentMessage('');
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true });
@@ -53,16 +53,16 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
       } catch (error) {
         console.error("Error accessing camera: ", error);
         setHasCameraPermission(false);
+        setStatus('no_camera');
         toast({
           variant: "destructive",
           title: "Camera Error",
           description: "Could not access your camera. Please check your browser permissions.",
         });
-        setStatus('no_camera');
       }
     } else {
-        setHasCameraPermission(false);
-        setStatus('no_camera');
+      setHasCameraPermission(false);
+      setStatus('no_camera');
     }
   }, [toast]);
   
@@ -106,6 +106,7 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
       canvas.height = video.videoHeight;
       const context = canvas.getContext('2d');
       if (context) {
+        // Flip the image horizontally to match the camera view
         context.translate(video.videoWidth, 0);
         context.scale(-1, 1);
         context.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
