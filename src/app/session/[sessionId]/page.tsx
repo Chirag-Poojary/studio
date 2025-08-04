@@ -40,7 +40,6 @@ export default function SessionPage() {
   const [isClient, setIsClient] = useState(false);
   const [formattedDate, setFormattedDate] = useState('N/A');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [qrToken, setQrToken] = useState('');
   const [countdown, setCountdown] = useState(20);
 
   const lectureDetails = useMemo(() => {
@@ -73,28 +72,28 @@ export default function SessionPage() {
     
     const sessionDocRef = doc(db, 'sessions', sessionId);
     
-    // Set up QR code rotation
-    const rotationIntervalId = setInterval(async () => {
-        if (sessionData?.active) {
-            const newQrToken = Date.now().toString();
-            await updateDoc(sessionDocRef, { qrToken: newQrToken });
-            setCountdown(20);
-        }
-    }, 20000); // 20 seconds
-
-    // Set up Firestore listener
+    // Firestore listener to react to data changes
     const unsubscribe = onSnapshot(sessionDocRef, (doc) => {
         if (doc.exists()) {
             const data = doc.data() as SessionData;
             setSessionData(data);
-            if(data.qrToken) {
-              setQrToken(data.qrToken);
+            if (data.qrToken) {
               updateQrCode(data.qrToken);
+              setCountdown(20); // Reset countdown whenever QR token changes
             }
         }
     });
-    
-    // Set up countdown timer
+
+    // QR code rotation timer
+    const rotationIntervalId = setInterval(() => {
+      // We only update the database here. The listener above will handle UI changes.
+      if (sessionData?.active) {
+        const newQrToken = Date.now().toString();
+        updateDoc(sessionDocRef, { qrToken: newQrToken });
+      }
+    }, 20000); // 20 seconds
+
+    // Countdown timer for display
     const countdownIntervalId = setInterval(() => {
         setCountdown(prev => (prev > 0 ? prev - 1 : 0));
     }, 1000);
