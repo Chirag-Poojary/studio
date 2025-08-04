@@ -78,6 +78,7 @@ export function LectureForm() {
         active: true,
         attendedStudents: [],
         professorId: currentUser.uid, // Add professor's UID
+        qrToken: Date.now().toString(), // Add initial QR token
       });
       
       const query = new URLSearchParams({

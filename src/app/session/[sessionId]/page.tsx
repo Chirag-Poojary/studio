@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,7 +9,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Clock, Users, XCircle, CheckCircle, Hourglass } from 'lucide-react';
+import { Clock, Users, XCircle, CheckCircle, Hourglass, RefreshCw } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DashboardHeader } from '@/components/dashboard-header';
 import { db } from '@/lib/firebase';
@@ -23,18 +23,24 @@ type Student = {
   verificationPhoto?: string;
 };
 
+type SessionData = {
+    attendedStudents: Student[];
+    active: boolean;
+    totalStudents: number;
+    qrToken?: string;
+};
+
 export default function SessionPage() {
   const params = useParams();
   const searchParams = useSearchParams();
   const sessionId = params.sessionId as string;
 
-  const [attendedStudents, setAttendedStudents] = useState<Student[]>([]);
-  const [sessionActive, setSessionActive] = useState(true);
+  const [sessionData, setSessionData] = useState<SessionData | null>(null);
   const [qrCodeUrl, setQrCodeUrl] = useState('');
   const [isClient, setIsClient] = useState(false);
-  const [totalStudents, setTotalStudents] = useState(0); 
   const [formattedDate, setFormattedDate] = useState('N/A');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [qrToken, setQrToken] = useState('');
 
   const lectureDetails = useMemo(() => {
     return {
@@ -46,35 +52,51 @@ export default function SessionPage() {
     };
   }, [searchParams]);
 
+  const updateQrCode = useCallback((token: string) => {
+    if (typeof window !== 'undefined') {
+      const urlToEncode = `${window.location.origin}/attend?sessionId=${sessionId}&token=${token}`;
+      setQrCodeUrl(`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(urlToEncode)}`);
+    }
+  }, [sessionId]);
+
   useEffect(() => {
     setIsClient(true);
-    if(typeof window !== 'undefined'){
-      const urlToEncode = `${window.location.origin}/attend?sessionId=${sessionId}`;
-      setQrCodeUrl(`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(urlToEncode)}`);
-      
-      const lectureDateString = searchParams.get('lectureDate');
-      if (lectureDateString) {
-        setFormattedDate(new Date(lectureDateString).toLocaleDateString());
-      }
+    const lectureDateString = searchParams.get('lectureDate');
+    if (lectureDateString) {
+      setFormattedDate(new Date(lectureDateString).toLocaleDateString());
     }
-
-  }, [sessionId, searchParams]);
-
+  }, [searchParams]);
+  
   useEffect(() => {
     if (!sessionId) return;
     
     const sessionDocRef = doc(db, 'sessions', sessionId);
+    
+    // Set up QR code rotation
+    const intervalId = setInterval(async () => {
+        if (sessionData?.active) {
+            const newQrToken = Date.now().toString();
+            await updateDoc(sessionDocRef, { qrToken: newQrToken });
+        }
+    }, 10000); // 10 seconds
+
+    // Set up Firestore listener
     const unsubscribe = onSnapshot(sessionDocRef, (doc) => {
         if (doc.exists()) {
-            const data = doc.data();
-            setAttendedStudents(data.attendedStudents || []);
-            setSessionActive(data.active);
-            setTotalStudents(data.totalStudents || 60); // Mock total students or get from session data
+            const data = doc.data() as SessionData;
+            setSessionData(data);
+            if(data.qrToken) {
+              setQrToken(data.qrToken);
+              updateQrCode(data.qrToken);
+            }
         }
     });
 
-    return () => unsubscribe();
-  }, [sessionId]);
+    return () => {
+        unsubscribe();
+        clearInterval(intervalId);
+    }
+  }, [sessionId, sessionData?.active, updateQrCode]);
 
   const endSession = async () => {
     if (sessionId) {
@@ -82,6 +104,10 @@ export default function SessionPage() {
       await updateDoc(sessionDocRef, { active: false });
     }
   };
+  
+  const attendedStudents = sessionData?.attendedStudents || [];
+  const totalStudents = sessionData?.totalStudents || 60;
+  const sessionActive = sessionData?.active ?? true;
 
   return (
     <div className="flex min-h-screen w-full flex-col">
@@ -180,8 +206,8 @@ export default function SessionPage() {
             <Card className="text-center">
               <CardHeader>
                 <CardTitle>Scan to Attend</CardTitle>
-                <CardDescription>
-                  {sessionActive ? "Students should scan this code." : "This code is now inactive."}
+                 <CardDescription>
+                  {sessionActive ? "Code refreshes every 10s" : "This code is now inactive."}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -194,6 +220,12 @@ export default function SessionPage() {
                       height={250}
                       className="rounded-lg border"
                     />
+                    {sessionActive && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 text-white opacity-0 hover:opacity-100 transition-opacity rounded-lg">
+                           <RefreshCw className="h-8 w-8 animate-spin" style={{ animationDuration: '10s' }}/>
+                           <p className="ml-2 font-semibold">Rotating QR Code</p>
+                        </div>
+                    )}
                   </div>
                 ) : (
                   <Skeleton className="w-[250px] h-[250px] mx-auto rounded-lg" />

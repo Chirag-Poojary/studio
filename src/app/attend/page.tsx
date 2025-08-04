@@ -15,7 +15,7 @@ import { doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 
-type AttendanceStatus = 'idle' | 'loading_user' | 'camera_loading' | 'camera_on' | 'verifying' | 'verified_ok' | 'verified_fail' | 'error';
+type AttendanceStatus = 'idle' | 'loading_user' | 'validating_token' | 'camera_loading' | 'camera_on' | 'verifying' | 'verified_ok' | 'verified_fail' | 'error';
 type AppUser = {
     uid: string;
     email: string;
@@ -27,6 +27,7 @@ type AppUser = {
 function AttendanceProcessor() {
   const searchParams = useSearchParams();
   const sessionId = searchParams.get('sessionId');
+  const token = searchParams.get('token');
   const { toast } = useToast();
 
   const [status, setStatus] = useState<AttendanceStatus>('loading_user');
@@ -56,8 +57,8 @@ function AttendanceProcessor() {
                 return;
             }
             setCurrentUser({ uid: user.uid, ...userData } as AppUser);
-            setStatus('camera_loading');
-            setProgress(25);
+            setStatus('validating_token');
+            setProgress(15);
         } else {
             setErrorMessage('Could not find your user profile.');
             setStatus('error');
@@ -67,6 +68,35 @@ function AttendanceProcessor() {
         setStatus('error');
     }
   }, []);
+  
+  const validateToken = useCallback(async () => {
+    if (!sessionId || !token) {
+        setErrorMessage('Invalid session or QR code. Please scan a valid, live QR code.');
+        setStatus('error');
+        return;
+    }
+
+    const sessionDocRef = doc(db, 'sessions', sessionId);
+    const sessionDoc = await getDoc(sessionDocRef);
+
+    if (sessionDoc.exists()) {
+        const sessionData = sessionDoc.data();
+        if (!sessionData.active) {
+            setErrorMessage('This session has already ended.');
+            setStatus('error');
+        } else if (sessionData.qrToken !== token) {
+            setErrorMessage('The QR code has expired. Please scan the new code from the screen.');
+            setStatus('error');
+        } else {
+            setStatus('camera_loading');
+            setProgress(25);
+        }
+    } else {
+        setErrorMessage('Session not found.');
+        setStatus('error');
+    }
+  }, [sessionId, token]);
+
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, handleUserCheck);
@@ -75,6 +105,12 @@ function AttendanceProcessor() {
       stopCamera();
     };
   }, [handleUserCheck, stopCamera]);
+
+  useEffect(() => {
+      if (status === 'validating_token') {
+          validateToken();
+      }
+  }, [status, validateToken]);
 
 
   useEffect(() => {
@@ -100,12 +136,14 @@ function AttendanceProcessor() {
 
     getCameraPermission();
 
+    // The return function from useEffect will run on component unmount
     return () => {
-        if (status === 'camera_on' || status === 'verifying') {
-            stopCamera();
+        // Ensure the camera is stopped if the component unmounts for any reason
+        if (videoRef.current && videoRef.current.srcObject) {
+            (videoRef.current.srcObject as MediaStream).getTracks().forEach(track => track.stop());
         }
     }
-  }, [status, stopCamera, toast]);
+  }, [status, toast]);
 
 
   const takePictureAndVerify = useCallback(async () => {
@@ -189,6 +227,8 @@ function AttendanceProcessor() {
     switch (status) {
       case 'loading_user':
          return <div className="text-center"><Loader2 className="h-12 w-12 animate-spin mx-auto text-primary" /><p className="mt-4">Loading your profile...</p></div>;
+      case 'validating_token':
+         return <div className="text-center"><Loader2 className="h-12 w-12 animate-spin mx-auto text-primary" /><p className="mt-4">Validating QR Code...</p></div>;
       case 'camera_loading':
         return <div className="text-center"><Loader2 className="h-12 w-12 animate-spin mx-auto text-primary" /><p className="mt-4">Starting camera...</p></div>;
       case 'camera_on':
@@ -233,18 +273,25 @@ function AttendanceProcessor() {
           <CardDescription>Session ID: {sessionId || 'Loading...'}</CardDescription>
         </CardHeader>
         <CardContent className="min-h-[400px] flex flex-col items-center justify-center space-y-4">
-            <div className={`w-full max-w-sm aspect-square rounded-full bg-secondary mx-auto flex items-center justify-center overflow-hidden border-4 border-primary ${!showVideo && 'hidden'}`}>
-                <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
+            <div className={`w-full max-w-sm aspect-square rounded-full bg-secondary mx-auto flex items-center justify-center overflow-hidden border-4 border-primary`}>
+                 {/* Always render the video tag to ensure ref is available */}
+                <video ref={videoRef} autoPlay playsInline muted className={`w-full h-full object-cover scale-x-[-1] ${!showVideo && 'hidden'}`} />
+                 {/* Show a placeholder when video is not active */}
+                {!showVideo && renderContent()}
             </div>
-            {hasCameraPermission === false && (
-                <Alert variant="destructive">
-                    <AlertTitle>Camera Access Denied</AlertTitle>
-                    <AlertDescription>
-                        Please enable camera permissions in your browser settings to continue.
-                    </AlertDescription>
-                </Alert>
+            {hasCameraPermission === false && status !== 'error' && (
+                 <Alert variant="destructive">
+                     <AlertTitle>Camera Access Denied</AlertTitle>
+                     <AlertDescription>
+                         Please enable camera permissions in your browser settings to continue.
+                     </AlertDescription>
+                 </Alert>
             )}
-            {renderContent()}
+             {/* Render content outside the video circle only when video is not supposed to be shown */}
+             {!showVideo && <div className="pt-4">{renderContent()}</div>}
+             {/* Render camera_on content below the video circle */}
+             {status === 'camera_on' && <div className="pt-4">{renderContent()}</div>}
+
         </CardContent>
         <CardFooter className="flex flex-col">
             <Progress value={progress} className="w-full h-2 rounded-b-lg" />
