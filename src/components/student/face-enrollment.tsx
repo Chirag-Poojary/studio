@@ -65,7 +65,7 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
       setStatus('no_camera');
     }
   }, [toast]);
-  
+
   useEffect(() => {
     const handleUser = async (user: any) => {
       if (user) {
@@ -84,16 +84,20 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
         }
       }
     };
-  
+
     if (isPartOfRegistration) {
+      // For registration, camera should start immediately.
+      // The `status === 'idle'` check ensures it only runs once.
       if (status === 'idle') {
         startCamera();
       }
     } else {
+      // For existing users on their dashboard, check auth state.
       const unsubscribe = onAuthStateChanged(auth, handleUser);
       return () => unsubscribe();
     }
-  
+
+    // Cleanup camera on component unmount
     return () => {
       stopCamera();
     };
@@ -119,16 +123,16 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
       }
     }
   }, [stopCamera]);
-  
+
   const handleEnrollment = async () => {
     if (!imageSrc) return;
     setStatus('enrolling');
 
     if (isPartOfRegistration && onEnrollmentComplete) {
-        onEnrollmentComplete(imageSrc); 
+        onEnrollmentComplete(imageSrc);
         return;
-    } 
-    
+    }
+
     if (currentUser?.uid) {
         try {
             const result = await enrollFace({
@@ -170,7 +174,7 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
     setEnrollmentMessage('');
     startCamera();
   };
-  
+
   if (status === 'enrolled' && !isPartOfRegistration) {
     return (
         <Card>
@@ -220,14 +224,14 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
       )}
       <CardContent className="flex flex-col items-center justify-center">
         <div className="w-64 h-64 rounded-lg bg-secondary flex items-center justify-center overflow-hidden border">
-          {status === 'camera_on' && <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />}
-          {imageSrc && <img src={imageSrc} alt="Student snapshot" className="w-full h-full object-cover" />}
-          {(status === 'camera_loading' || status === 'enrolling' || status === 'idle') && <Loader2 className="w-16 h-16 text-muted-foreground animate-spin" />}
-          {status === 'no_camera' && <AlertTriangle className="w-16 h-16 text-destructive" />}
-          {status === 'enrollment_failed' && <AlertTriangle className="w-16 h-16 text-destructive" />}
+           {status === 'camera_on' && <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />}
+           {imageSrc && <img src={imageSrc} alt="Student snapshot" className="w-full h-full object-cover" />}
+           {(status === 'camera_loading' || status === 'enrolling' || status === 'idle') && <Loader2 className="w-16 h-16 text-muted-foreground animate-spin" />}
+           {(status === 'no_camera' || status === 'enrollment_failed') && <AlertTriangle className="w-16 h-16 text-destructive" />}
         </div>
         <canvas ref={canvasRef} className="hidden" />
-        {status === 'no_camera' && (
+
+        {hasCameraPermission === false && (
              <Alert variant={'destructive'} className="mt-4">
                 <AlertTitle>{'Camera Not Available'}</AlertTitle>
                 <AlertDescription>Please check your camera permissions and try again.</AlertDescription>
@@ -244,9 +248,6 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
         {status === 'camera_on' && <Button onClick={takePicture}>Take Picture</Button>}
         {(status === 'picture_taken' || status === 'enrollment_failed') && (
           <div className="flex justify-center gap-2">
-            <Button variant="outline" onClick={startCamera}>
-              <RefreshCw className="mr-2 h-4 w-4" /> Retake
-            </Button>
             <Button onClick={handleEnrollment} disabled={status === 'enrolling'}>
              {status === 'enrolling' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
              Enroll This Picture
