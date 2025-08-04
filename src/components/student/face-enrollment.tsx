@@ -86,7 +86,9 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
     };
   
     if (isPartOfRegistration) {
-      startCamera();
+      if (status === 'idle') {
+        startCamera();
+      }
     } else {
       const unsubscribe = onAuthStateChanged(auth, handleUser);
       return () => unsubscribe();
@@ -95,7 +97,7 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
     return () => {
       stopCamera();
     };
-  }, [isPartOfRegistration, startCamera, stopCamera]);
+  }, [isPartOfRegistration, startCamera, stopCamera, status]);
 
 
   const takePicture = useCallback(() => {
@@ -218,8 +220,8 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
       )}
       <CardContent className="flex flex-col items-center justify-center">
         <div className="w-64 h-64 rounded-lg bg-secondary flex items-center justify-center overflow-hidden border">
-          {(status === 'camera_on' || status === 'picture_taken') && <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" style={{ display: status === 'camera_on' ? 'block' : 'none' }} />}
-          {imageSrc && <img src={imageSrc} alt="Student snapshot" className="w-full h-full object-cover" style={{ display: imageSrc ? 'block' : 'none' }}/>}
+          {status === 'camera_on' && <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />}
+          {imageSrc && <img src={imageSrc} alt="Student snapshot" className="w-full h-full object-cover" />}
           {(status === 'camera_loading' || status === 'enrolling' || status === 'idle') && <Loader2 className="w-16 h-16 text-muted-foreground animate-spin" />}
           {status === 'no_camera' && <AlertTriangle className="w-16 h-16 text-destructive" />}
           {status === 'enrollment_failed' && <AlertTriangle className="w-16 h-16 text-destructive" />}
