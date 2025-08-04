@@ -85,9 +85,9 @@ function AttendanceProcessor() {
                 setHasCameraPermission(true);
                 if (videoRef.current) {
                     videoRef.current.srcObject = stream;
-                    setStatus('camera_on');
-                    setProgress(50);
                 }
+                setStatus('camera_on');
+                setProgress(50);
             } catch (error) {
                 console.error('Error accessing camera:', error);
                 setHasCameraPermission(false);
@@ -143,7 +143,8 @@ function AttendanceProcessor() {
                             email: currentUser.email,
                             name: currentUser.name || currentUser.email.split('@')[0],
                             rollNo: currentUser.rollNo || 'N/A',
-                            checkInTime: new Date().toISOString()
+                            checkInTime: new Date().toISOString(),
+                            verificationPhoto: dataUrl,
                         };
                         
                         const sessionDoc = await getDoc(sessionDocRef);
@@ -261,5 +262,3 @@ export default function AttendPage() {
         </Suspense>
     )
 }
-
-    

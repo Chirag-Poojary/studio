@@ -19,6 +19,7 @@ type Student = {
   name: string;
   rollNo: string;
   email: string;
+  verificationPhoto?: string;
 };
 
 export default function SessionPage() {
@@ -128,7 +129,7 @@ export default function SessionPage() {
                             <div key={index} className="flex items-center justify-between">
                                 <div className="flex items-center gap-4">
                                     <Avatar>
-                                        <AvatarImage src={`https://placehold.co/40x40.png?text=${student.name.charAt(0)}`} />
+                                        <AvatarImage src={student.verificationPhoto || `https://placehold.co/40x40.png?text=${student.name.charAt(0)}`} />
                                         <AvatarFallback>{student.name.charAt(0)}</AvatarFallback>
                                     </Avatar>
                                     <div>
