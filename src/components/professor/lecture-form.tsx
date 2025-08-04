@@ -1,3 +1,4 @@
+
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -22,8 +23,10 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
-import { db } from '@/lib/firebase';
+import { db, auth } from '@/lib/firebase';
 import { doc, setDoc } from 'firebase/firestore';
+import { useState } from 'react';
+import { Loader2 } from 'lucide-react';
 
 const lectureFormSchema = z.object({
   department: z.string().min(2, { message: 'Department is required.' }),
@@ -39,6 +42,7 @@ type LectureFormValues = z.infer<typeof lectureFormSchema>;
 export function LectureForm() {
   const router = useRouter();
   const { toast } = useToast();
+  const [isLoading, setIsLoading] = useState(false);
   const form = useForm<LectureFormValues>({
     resolver: zodResolver(lectureFormSchema),
     defaultValues: {
@@ -50,6 +54,18 @@ export function LectureForm() {
   });
 
   async function onSubmit(data: LectureFormValues) {
+    setIsLoading(true);
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+        toast({
+            variant: "destructive",
+            title: "Authentication Error",
+            description: "You must be logged in to create a session."
+        });
+        setIsLoading(false);
+        return;
+    }
+    
     const sessionId = Date.now().toString();
     
     try {
@@ -61,6 +77,7 @@ export function LectureForm() {
         createdAt: new Date().toISOString(),
         active: true,
         attendedStudents: [],
+        professorId: currentUser.uid, // Add professor's UID
       });
       
       const query = new URLSearchParams({
@@ -82,6 +99,8 @@ export function LectureForm() {
             title: "Failed to create session",
             description: "Could not save session to the database. Please try again."
         });
+    } finally {
+        setIsLoading(false);
     }
   }
 
@@ -203,7 +222,10 @@ export function LectureForm() {
             )}
           />
         </div>
-        <Button type="submit" size="lg">Generate QR Code</Button>
+        <Button type="submit" size="lg" disabled={isLoading}>
+            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Generate QR Code
+        </Button>
       </form>
     </Form>
   );

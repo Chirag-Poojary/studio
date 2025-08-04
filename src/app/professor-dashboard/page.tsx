@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -5,7 +6,9 @@ import { LectureForm } from '@/components/professor/lecture-form';
 import { DashboardHeader } from '@/components/dashboard-header';
 import { Button } from '@/components/ui/button';
 import { useRouter } from 'next/navigation';
-import { LogOut } from 'lucide-react';
+import { LogOut, History } from 'lucide-react';
+import { PastSessionsList } from '@/components/professor/past-sessions-list';
+import { Separator } from '@/components/ui/separator';
 
 
 export default function ProfessorDashboard() {
@@ -37,7 +40,23 @@ export default function ProfessorDashboard() {
               <LectureForm />
             </CardContent>
           </Card>
-          {/* Future implementation: Display past lecture sessions here */}
+          
+          <Separator />
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <History className="h-6 w-6" />
+                Past Lecture Sessions
+              </CardTitle>
+              <CardDescription>
+                Review attendance records from your previous lecture sessions.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+                <PastSessionsList />
+            </CardContent>
+          </Card>
         </div>
       </main>
     </div>
