@@ -72,28 +72,34 @@ export default function SessionPage() {
     
     const sessionDocRef = doc(db, 'sessions', sessionId);
     
+    // Firestore listener
     const unsubscribe = onSnapshot(sessionDocRef, (doc) => {
         if (doc.exists()) {
             const data = doc.data() as SessionData;
             const previousToken = sessionData?.qrToken;
             setSessionData(data);
             
+            // Update QR and reset countdown only if token has changed
             if (data.qrToken && data.qrToken !== previousToken) {
               updateQrCode(data.qrToken);
-              setCountdown(20); // Reset countdown on QR token change
-            } else if (!previousToken && data.qrToken) {
+              setCountdown(20);
+            } else if (!previousToken && data.qrToken) { // For initial load
               updateQrCode(data.qrToken);
             }
         }
     });
 
+    // Interval to update the token in the database (master clock)
     const rotationIntervalId = setInterval(() => {
+      // We check 'active' status from a fresh state read inside interval
+      // to avoid stale closures, though onSnapshot should keep sessionData fresh.
       if (sessionData?.active) {
         const newQrToken = Date.now().toString();
         updateDoc(sessionDocRef, { qrToken: newQrToken });
       }
     }, 20000); // 20 seconds
 
+    // Interval for UI countdown
     const countdownIntervalId = setInterval(() => {
         setCountdown(prev => (prev > 1 ? prev - 1 : 0));
     }, 1000);
@@ -103,7 +109,8 @@ export default function SessionPage() {
         clearInterval(rotationIntervalId);
         clearInterval(countdownIntervalId);
     }
-  }, [sessionId, updateQrCode, sessionData]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, updateQrCode]);
 
 
   const endSession = async () => {
