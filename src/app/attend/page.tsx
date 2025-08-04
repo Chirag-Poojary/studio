@@ -4,7 +4,7 @@
 import { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2, Camera, CheckCircle, XCircle, UserCheck } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
@@ -21,6 +21,7 @@ type AppUser = {
     email: string;
     faceDataUri: string;
     rollNo: string;
+    name: string;
 };
 
 function AttendanceProcessor() {
@@ -78,29 +79,29 @@ function AttendanceProcessor() {
 
   useEffect(() => {
     const getCameraPermission = async () => {
-      if (status === 'camera_loading') {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-          setHasCameraPermission(true);
-          if (videoRef.current) {
-            videoRef.current.srcObject = stream;
-          }
-          setStatus('camera_on');
-          setProgress(50);
-        } catch (error) {
-          console.error('Error accessing camera:', error);
-          setHasCameraPermission(false);
-          setErrorMessage('Could not access camera. Please enable permissions in your browser settings.');
-          setStatus('error');
-          toast({ variant: 'destructive', title: 'Camera Error', description: 'Could not access camera. Please enable permissions.' });
+        if (status === 'camera_loading') {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                setHasCameraPermission(true);
+                if (videoRef.current) {
+                    videoRef.current.srcObject = stream;
+                    setStatus('camera_on');
+                    setProgress(50);
+                }
+            } catch (error) {
+                console.error('Error accessing camera:', error);
+                setHasCameraPermission(false);
+                setErrorMessage('Camera access was denied. Please enable permissions in your browser settings.');
+                setStatus('error');
+                toast({ variant: 'destructive', title: 'Camera Error', description: 'Could not access camera. Please enable permissions.' });
+            }
         }
-      }
     };
 
     getCameraPermission();
 
     return () => {
-        if(status === 'camera_on' || status === 'verifying'){
+        if (status === 'camera_on' || status === 'verifying') {
             stopCamera();
         }
     }
@@ -127,7 +128,7 @@ function AttendanceProcessor() {
                 const result = await verifyFace({
                     livePhotoDataUri: dataUrl,
                     enrolledFaceDataUri: currentUser.faceDataUri,
-                    studentName: currentUser.email
+                    studentName: currentUser.name || currentUser.email
                 });
 
                 if (result.isMatch && result.confidence > 0.8) {
@@ -140,7 +141,7 @@ function AttendanceProcessor() {
                         const studentData = {
                             uid: currentUser.uid,
                             email: currentUser.email,
-                            name: currentUser.email.split('@')[0],
+                            name: currentUser.name || currentUser.email.split('@')[0],
                             rollNo: currentUser.rollNo || 'N/A',
                             checkInTime: new Date().toISOString()
                         };
@@ -192,11 +193,8 @@ function AttendanceProcessor() {
       case 'camera_on':
         return (
           <div className="text-center">
-            <div className="w-full max-w-sm aspect-square rounded-full bg-secondary mx-auto flex items-center justify-center overflow-hidden border-4 border-primary">
-              <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
-            </div>
-            <p className="mt-4 text-muted-foreground text-sm">Position your face in the frame and take a picture to verify.</p>
-            <Button onClick={takePictureAndVerify} className="mt-4" size="lg" disabled={!hasCameraPermission}><Camera className="mr-2"/> Verify My Face</Button>
+            <p className="mb-4 text-muted-foreground text-sm">Position your face in the frame and take a picture to verify.</p>
+            <Button onClick={takePictureAndVerify} size="lg" disabled={!hasCameraPermission}><Camera className="mr-2"/> Verify My Face</Button>
           </div>
         );
       case 'verifying':
@@ -216,15 +214,15 @@ function AttendanceProcessor() {
             <XCircle className="h-16 w-16 mx-auto text-destructive" />
             <h2 className="text-2xl font-bold mt-4">Attendance Failed</h2>
             <p className="text-muted-foreground">{errorMessage || "An unknown error occurred."}</p>
-            {hasCameraPermission === false ? null : (
-              <Button onClick={() => window.location.reload()} variant="outline" className="mt-4">Try Again</Button>
-            )}
+            <Button onClick={() => window.location.reload()} variant="outline" className="mt-4">Try Again</Button>
           </div>
         );
       default:
         return <div className="text-center"><Loader2 className="h-12 w-12 animate-spin mx-auto text-primary" /></div>;
     }
   };
+  
+  const showVideo = status === 'camera_on' || status === 'verifying' || status === 'camera_loading';
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
@@ -233,11 +231,24 @@ function AttendanceProcessor() {
           <CardTitle className="flex items-center gap-2"><UserCheck /> Attendance Verification</CardTitle>
           <CardDescription>Session ID: {sessionId || 'Loading...'}</CardDescription>
         </CardHeader>
-        <CardContent className="min-h-[400px] flex flex-col items-center justify-center">
-          {renderContent()}
+        <CardContent className="min-h-[400px] flex flex-col items-center justify-center space-y-4">
+            <div className={`w-full max-w-sm aspect-square rounded-full bg-secondary mx-auto flex items-center justify-center overflow-hidden border-4 border-primary ${!showVideo && 'hidden'}`}>
+                <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
+            </div>
+            {hasCameraPermission === false && (
+                <Alert variant="destructive">
+                    <AlertTitle>Camera Access Denied</AlertTitle>
+                    <AlertDescription>
+                        Please enable camera permissions in your browser settings to continue.
+                    </AlertDescription>
+                </Alert>
+            )}
+            {renderContent()}
         </CardContent>
-        <Progress value={progress} className="w-full h-2 rounded-b-lg" />
-        <canvas ref={canvasRef} className="hidden" />
+        <CardFooter className="flex flex-col">
+            <Progress value={progress} className="w-full h-2 rounded-b-lg" />
+            <canvas ref={canvasRef} className="hidden" />
+        </CardFooter>
       </Card>
     </main>
   );
@@ -250,3 +261,5 @@ export default function AttendPage() {
         </Suspense>
     )
 }
+
+    
