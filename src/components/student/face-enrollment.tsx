@@ -29,6 +29,7 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
   const [enrollmentMessage, setEnrollmentMessage] = useState('');
   const [hasEnrolledFace, setHasEnrolledFace] = useState(false);
   const [isClient, setIsClient] = useState(false);
+  const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
 
    useEffect(() => {
     setIsClient(true);
@@ -48,12 +49,14 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        setHasCameraPermission(true);
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
         }
         setStatus('camera_on');
       } catch (error) {
         console.error("Error accessing camera: ", error);
+        setHasCameraPermission(false);
         toast({
           variant: "destructive",
           title: "Camera Error",
@@ -62,6 +65,7 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
         setStatus('no_camera');
       }
     } else {
+        setHasCameraPermission(false);
         setStatus('no_camera');
     }
   }, [toast]);
@@ -170,7 +174,7 @@ export function FaceEnrollment({ onEnrollmentComplete, isPartOfRegistration = fa
   const resetForReEnrollment = () => {
     setImageSrc(null);
     setHasEnrolledFace(false);
-    setStatus('camera_loading');
+    setStatus('idle');
     setEnrollmentMessage('');
     startCamera(); // Immediately start the camera
   };
