@@ -12,10 +12,16 @@ import { useToast } from '@/hooks/use-toast';
 import { verifyFace } from '@/ai/flows/verify-face';
 import { auth, db } from '@/lib/firebase';
 import { doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, User } from 'firebase/auth';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 
-type AttendanceStatus = 'idle' | 'loading_user' | 'camera_loading' |'camera_on' | 'verifying' | 'verified_ok' | 'verified_fail' | 'error';
+type AttendanceStatus = 'idle' | 'loading_user' | 'camera_loading' | 'camera_on' | 'verifying' | 'verified_ok' | 'verified_fail' | 'error';
+type AppUser = {
+    uid: string;
+    email: string;
+    faceDataUri: string;
+    rollNo: string;
+};
 
 function AttendanceProcessor() {
   const searchParams = useSearchParams();
@@ -26,9 +32,9 @@ function AttendanceProcessor() {
   const [progress, setProgress] = useState(0);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
-  const [hasCameraPermission, setHasCameraPermission] = useState(true);
+  const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
 
   const stopCamera = useCallback(() => {
     if (videoRef.current && videoRef.current.srcObject) {
@@ -36,59 +42,71 @@ function AttendanceProcessor() {
       videoRef.current.srcObject = null;
     }
   }, []);
-
-  const startCamera = useCallback(async () => {
-    setStatus('camera_loading');
-    setProgress(25);
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        setHasCameraPermission(true);
-        if (videoRef.current) videoRef.current.srcObject = stream;
-        setStatus('camera_on');
-        setProgress(50);
-      } catch (error) {
-        console.error("Camera error:", error);
-        setHasCameraPermission(false);
-        setErrorMessage('Could not access camera. Please enable permissions in your browser settings.');
-        setStatus('error');
-        toast({ variant: 'destructive', title: 'Camera Error', description: 'Could not access camera. Please enable permissions.' });
-      }
-    } else {
-        setErrorMessage('Your browser does not support camera access.');
-        setStatus('error');
-    }
-  }, [toast]);
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
+  
+  const handleUserCheck = useCallback(async (user: User | null) => {
+    if (user) {
         const userDocRef = doc(db, 'users', user.uid);
         const userDoc = await getDoc(userDocRef);
         if (userDoc.exists()) {
-          const userData = userDoc.data();
-          if (!userData.faceDataUri) {
-            setErrorMessage('You have not enrolled your face. Please enroll from your dashboard.');
-            setStatus('error');
-            return;
-          }
-          setCurrentUser({ uid: user.uid, ...userData });
-          startCamera();
+            const userData = userDoc.data();
+            if (!userData.faceDataUri) {
+                setErrorMessage('You have not enrolled your face. Please enroll from your dashboard.');
+                setStatus('error');
+                return;
+            }
+            setCurrentUser({ uid: user.uid, ...userData } as AppUser);
+            setStatus('camera_loading');
+            setProgress(25);
         } else {
-          setErrorMessage('Could not find your user profile.');
-          setStatus('error');
+            setErrorMessage('Could not find your user profile.');
+            setStatus('error');
         }
-      } else {
-          setErrorMessage('You must be logged in to mark attendance.');
-          setStatus('error');
-      }
-    });
+    } else {
+        setErrorMessage('You must be logged in to mark attendance.');
+        setStatus('error');
+    }
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, handleUserCheck);
     return () => {
       unsubscribe();
       stopCamera();
     };
-  }, [startCamera, stopCamera]);
-  
+  }, [handleUserCheck, stopCamera]);
+
+
+  useEffect(() => {
+    const getCameraPermission = async () => {
+      if (status === 'camera_loading') {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          setHasCameraPermission(true);
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+          }
+          setStatus('camera_on');
+          setProgress(50);
+        } catch (error) {
+          console.error('Error accessing camera:', error);
+          setHasCameraPermission(false);
+          setErrorMessage('Could not access camera. Please enable permissions in your browser settings.');
+          setStatus('error');
+          toast({ variant: 'destructive', title: 'Camera Error', description: 'Could not access camera. Please enable permissions.' });
+        }
+      }
+    };
+
+    getCameraPermission();
+
+    return () => {
+        if(status === 'camera_on' || status === 'verifying'){
+            stopCamera();
+        }
+    }
+  }, [status, stopCamera, toast]);
+
+
   const takePictureAndVerify = useCallback(async () => {
     if (videoRef.current && canvasRef.current && currentUser) {
         const video = videoRef.current;
@@ -165,10 +183,6 @@ function AttendanceProcessor() {
     }
   }, [stopCamera, toast, currentUser, sessionId]);
 
-  useEffect(() => {
-    return () => stopCamera();
-  }, [stopCamera]);
-
   const renderContent = () => {
     switch (status) {
       case 'loading_user':
@@ -181,12 +195,6 @@ function AttendanceProcessor() {
             <div className="w-full max-w-sm aspect-square rounded-full bg-secondary mx-auto flex items-center justify-center overflow-hidden border-4 border-primary">
               <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
             </div>
-             {!hasCameraPermission && (
-                <Alert variant="destructive" className="mt-4">
-                    <AlertTitle>Camera Access Required</AlertTitle>
-                    <AlertDescription>Please allow camera access to use this feature.</AlertDescription>
-                </Alert>
-             )}
             <p className="mt-4 text-muted-foreground text-sm">Position your face in the frame and take a picture to verify.</p>
             <Button onClick={takePictureAndVerify} className="mt-4" size="lg" disabled={!hasCameraPermission}><Camera className="mr-2"/> Verify My Face</Button>
           </div>
@@ -208,7 +216,9 @@ function AttendanceProcessor() {
             <XCircle className="h-16 w-16 mx-auto text-destructive" />
             <h2 className="text-2xl font-bold mt-4">Attendance Failed</h2>
             <p className="text-muted-foreground">{errorMessage || "An unknown error occurred."}</p>
-             <Button onClick={() => window.location.reload()} variant="outline" className="mt-4">Try Again</Button>
+            {hasCameraPermission === false ? null : (
+              <Button onClick={() => window.location.reload()} variant="outline" className="mt-4">Try Again</Button>
+            )}
           </div>
         );
       default:
