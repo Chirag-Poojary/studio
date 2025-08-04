@@ -14,6 +14,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { DashboardHeader } from '@/components/dashboard-header';
 import { db } from '@/lib/firebase';
 import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 
 type Student = {
   name: string;
@@ -33,6 +34,7 @@ export default function SessionPage() {
   const [isClient, setIsClient] = useState(false);
   const [totalStudents, setTotalStudents] = useState(0); 
   const [formattedDate, setFormattedDate] = useState('N/A');
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
   const lectureDetails = useMemo(() => {
     return {
@@ -108,46 +110,70 @@ export default function SessionPage() {
                 </Alert>
               </CardContent>
             </Card>
-
-            <Card>
-                <CardHeader className="flex flex-row items-center justify-between">
-                    <div className="space-y-1">
-                        <CardTitle>Real-time Attendance</CardTitle>
-                        <CardDescription>
-                            Students who have successfully checked in will appear here.
-                        </CardDescription>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <Users className="h-5 w-5 text-muted-foreground" />
-                        <span className="font-bold text-2xl">{attendedStudents.length}</span>
-                        <span className="text-sm text-muted-foreground">/ {totalStudents}</span>
-                    </div>
-                </CardHeader>
-                <CardContent>
-                    <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2">
-                        {attendedStudents.length > 0 ? attendedStudents.map((student, index) => (
-                            <div key={index} className="flex items-center justify-between">
-                                <div className="flex items-center gap-4">
-                                    <Avatar>
-                                        <AvatarImage src={student.verificationPhoto || `https://placehold.co/40x40.png?text=${student.name.charAt(0)}`} />
-                                        <AvatarFallback>{student.name.charAt(0)}</AvatarFallback>
-                                    </Avatar>
-                                    <div>
-                                        <p className="font-medium">{student.name}</p>
-                                        <p className="text-sm text-muted-foreground">Roll No: {student.rollNo}</p>
+            
+            <Dialog open={!!selectedImage} onOpenChange={(isOpen) => !isOpen && setSelectedImage(null)}>
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between">
+                        <div className="space-y-1">
+                            <CardTitle>Real-time Attendance</CardTitle>
+                            <CardDescription>
+                                Students who have successfully checked in will appear here. Click an image to enlarge.
+                            </CardDescription>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Users className="h-5 w-5 text-muted-foreground" />
+                            <span className="font-bold text-2xl">{attendedStudents.length}</span>
+                            <span className="text-sm text-muted-foreground">/ {totalStudents}</span>
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2">
+                            {attendedStudents.length > 0 ? attendedStudents.map((student, index) => (
+                                <div key={index} className="flex items-center justify-between">
+                                    <div className="flex items-center gap-4">
+                                        <DialogTrigger asChild>
+                                            <Avatar className="cursor-pointer">
+                                                <AvatarImage 
+                                                    src={student.verificationPhoto} 
+                                                    onClick={() => setSelectedImage(student.verificationPhoto || null)} 
+                                                />
+                                                <AvatarFallback>{student.name.charAt(0)}</AvatarFallback>
+                                            </Avatar>
+                                        </DialogTrigger>
+                                        <div>
+                                            <p className="font-medium">{student.name}</p>
+                                            <p className="text-sm text-muted-foreground">Roll No: {student.rollNo}</p>
+                                        </div>
                                     </div>
+                                    <Badge variant="secondary">Checked In</Badge>
                                 </div>
-                                <Badge variant="secondary">Checked In</Badge>
-                            </div>
-                        )) : (
-                             <div className="text-center py-8 text-muted-foreground">
-                                <Hourglass className="mx-auto h-8 w-8 mb-2"/>
-                                <p>Waiting for students to check in...</p>
-                             </div>
-                        )}
-                    </div>
-                </CardContent>
-            </Card>
+                            )) : (
+                                <div className="text-center py-8 text-muted-foreground">
+                                    <Hourglass className="mx-auto h-8 w-8 mb-2"/>
+                                    <p>Waiting for students to check in...</p>
+                                </div>
+                            )}
+                        </div>
+                    </CardContent>
+                </Card>
+                {selectedImage && (
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Verification Photo</DialogTitle>
+                        </DialogHeader>
+                        <div className="relative w-full aspect-square">
+                            <Image
+                                src={selectedImage}
+                                alt="Student verification photo"
+                                layout="fill"
+                                objectFit="contain"
+                                className="rounded-md"
+                            />
+                        </div>
+                    </DialogContent>
+                )}
+            </Dialog>
+
           </div>
 
           <div className="space-y-8">
