@@ -45,12 +45,14 @@ export default function SessionPage() {
 
   useEffect(() => {
     setIsClient(true);
-    const urlToEncode = `${window.location.origin}/attend?sessionId=${sessionId}`;
-    setQrCodeUrl(`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(urlToEncode)}`);
-    
-    const lectureDateString = searchParams.get('lectureDate');
-    if (lectureDateString) {
-      setFormattedDate(new Date(lectureDateString).toLocaleDateString());
+    if(typeof window !== 'undefined'){
+      const urlToEncode = `${window.location.origin}/attend?sessionId=${sessionId}`;
+      setQrCodeUrl(`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(urlToEncode)}`);
+      
+      const lectureDateString = searchParams.get('lectureDate');
+      if (lectureDateString) {
+        setFormattedDate(new Date(lectureDateString).toLocaleDateString());
+      }
     }
 
   }, [sessionId, searchParams]);

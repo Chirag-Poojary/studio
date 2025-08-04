@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog"
 import dynamic from 'next/dynamic';
 import { Loader2 } from 'lucide-react';
+import { FaceEnrollment } from '@/components/student/face-enrollment';
 
 const QrScanner = dynamic(() => import('@/components/student/qr-scanner').then(mod => mod.QrScanner), {
   ssr: false,
@@ -44,16 +45,6 @@ export default function StudentDashboard() {
       <main className="flex flex-1 flex-col gap-4 p-4 md:gap-8 md:p-8 bg-muted/40">
          <div className="grid gap-4 md:grid-cols-2 md:gap-8">
             <div className="space-y-4">
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <UserCheck className="h-6 w-6 text-primary"/>
-                            Student Dashboard
-                        </CardTitle>
-                        <CardDescription>Welcome! View your attendance history or scan a code to mark attendance.</CardDescription>
-                    </CardHeader>
-                </Card>
-                
                 <Card>
                     <CardHeader className="flex flex-row items-center gap-4 space-y-0">
                         <div className="p-3 rounded-full bg-primary/10 border border-primary/20">
@@ -84,6 +75,7 @@ export default function StudentDashboard() {
                         </Dialog>
                     </CardContent>
                 </Card>
+                 <FaceEnrollment />
             </div>
 
             <AttendanceHistory />
