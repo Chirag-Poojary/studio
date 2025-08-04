@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { db, auth } from '@/lib/firebase';
-import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -20,6 +20,7 @@ type Session = {
     year: string;
     division: string;
     attendedStudents: any[];
+    createdAt: string; // Added for sorting
 };
 
 export function PastSessionsList() {
@@ -31,7 +32,9 @@ export function PastSessionsList() {
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, (user) => {
             setCurrentUser(user);
-            setLoading(false);
+            if (!user) {
+                setLoading(false);
+            }
         });
         return () => unsubscribe();
     }, []);
@@ -41,8 +44,7 @@ export function PastSessionsList() {
 
         const sessionsQuery = query(
             collection(db, 'sessions'),
-            where('professorId', '==', currentUser.uid),
-            orderBy('createdAt', 'desc')
+            where('professorId', '==', currentUser.uid)
         );
 
         const unsubscribe = onSnapshot(sessionsQuery, (snapshot) => {
@@ -50,6 +52,14 @@ export function PastSessionsList() {
                 id: doc.id,
                 ...doc.data(),
             })) as Session[];
+
+            // Sort on the client-side to avoid needing a composite index
+            sessionsData.sort((a, b) => {
+                const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+                return dateB - dateA;
+            });
+
             setSessions(sessionsData);
             setLoading(false);
         });
