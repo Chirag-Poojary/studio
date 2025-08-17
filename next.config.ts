@@ -7,6 +7,7 @@ const nextConfig: NextConfig = {
       '*.cloudworkstations.dev',
       '*.firebase.studio',
     ],
+    buildActivity: false,
   },
   typescript: {
     ignoreBuildErrors: true,
